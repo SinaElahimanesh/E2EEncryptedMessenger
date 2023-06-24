@@ -1,12 +1,14 @@
 import json
 
-SERVER_DATA_PATH = 'data.json'
+CLIENT_DATA_PATH = 'client_data.json'
 
 
-class State:
+class ClientState:
     def __init__(self, path):
         self.path = path
-        self.state = None
+        self.state = {
+            'master_key': []
+        }
 
     def load_data(self):
         with open(self.path, 'r') as file:
@@ -17,4 +19,6 @@ class State:
             json.dump(self.state, file)
 
 
-state = State(SERVER_DATA_PATH)
+client_state = ClientState(CLIENT_DATA_PATH)
+# client_state.save_data() Run this for the first time to create a new file
+client_state.load_data()
