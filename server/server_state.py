@@ -7,7 +7,7 @@ class ServerState:
     def __init__(self, path):
         self.path = path
         self.state = {
-            'users': []
+            'users': {} # Dictionary from usernames to their attributes
         }
 
     def load_data(self):
@@ -20,5 +20,5 @@ class ServerState:
 
 
 state = ServerState(SERVER_DATA_PATH)
-# state.save_data() Run this for the first time to create a new file
+# state.save_data() # Run this for the first time to create a new file
 state.load_data()
