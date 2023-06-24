@@ -24,15 +24,24 @@ def __generate_rsa_key(username, password):
     return public
 
 
-def __generate_dh_keys(g, size):
-    parameters = dh.generate_parameters(generator=g, key_size=size)
-    # Generate a private key for use in the exchange.
+def generate_dh_keys(g, size, peer, parameters=None):
+    if parameters is None:
+        parameters = dh.generate_parameters(generator=g, key_size=size, backend=default_backend())
+    else:
+        parameters = serialization.load_pem_parameters(parameters.encode())
     private_key = parameters.generate_private_key()
-    return private_key
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
+    parameters_string = parameters.parameter_bytes(encoding=serialization.Encoding.PEM,
+                                                   format=serialization.ParameterFormat.PKCS3).decode()
+    # Update client state
+    client_state.state['private_dh_keys'][peer] = private_key
+    return private_key, public_key, parameters_string
 
 
-def generate_dh_shared_key(peer, peer_public_key):
-    my_key = client_state.state['private_dh_keys'][peer]
+def generate_dh_shared_key(my_key, peer_public_key):
     peer_key_obj = serialization.load_pem_public_key(
         peer_public_key,
         backend=default_backend()
@@ -71,15 +80,13 @@ def refresh_key(peer):
     # Prepare data
     client_username = client_state.state['username']
     nonce = __generate_nonce()
-    private_key = __generate_dh_keys(2, 512)
-    data = 'REFRESH_KEY###' + '|'.join([client_username, peer, nonce, private_key])
-
-    # Update client state
     client_state.state['nonce'] = nonce
-    client_state.state['private_dh_keys'][peer] = private_key
-    client_state.save_data()
+    private_key, public_key, parameters = generate_dh_keys(2, 512, peer)
+    data = 'REFRESH_KEY###' + '|'.join([client_username, peer, nonce, public_key, parameters])
 
     # Apply encryption
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
-    return fernet.encrypt(data.encode())
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + client_username.encode() + cipher_text

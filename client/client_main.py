@@ -1,17 +1,22 @@
 # import libraries
 import socket
 import time
-from _thread import start_new_thread
+from threading import Thread
 # create client socket
 from cryptography.fernet import Fernet
 
 from client.client_state import client_state, SESSION_KEY_DURATION
-from client.functions import create_account, save_master_key, generate_dh_shared_key
+from client.functions import create_account, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key
 from client.parsers import parse_create_account
 
+# If the received message from the server is corresponded to a sent message,
+# we need the message to know how to handle that!
+MOST_RECENT_ENCODED_MESSAGE = ''
+
+# Initialize Client Socket
 ClientMultiSocket = socket.socket()
 
-# define host and port 
+# define host and port
 host = '127.0.0.1'
 port = 2006
 
@@ -65,6 +70,8 @@ def build_request(em):
         return create_account(username, password, public_key)
 
 
+# Start a new thread for incoming requests from server
+
 def handle_incoming_requests(connection):
     """
     This function waits for requests from the server for tasks such as key management.
@@ -73,33 +80,61 @@ def handle_incoming_requests(connection):
     while True:
         cipher_text = connection.recv(2048)
         if cipher_text[0] == 83 and cipher_text[1] == 75:  # if it starts with 'SK', we have to handle set key process
+            cipher_text = cipher_text[2:]
             master_key = client_state.state['master_key'].encode()
             fernet = Fernet(master_key)
             # It must be in this format: (username, peer, nonce, peer_private_key)
             plain = fernet.decrypt(cipher_text).decode()
-            _, peer, nonce, peer_public_key = plain.split('|')
+            _, peer, nonce, peer_public_key, parameters = plain.split('|')
             if nonce != client_state.state['nonce']:
                 print('CAUTION: POTENTIAL REPLAY ATTACK DETECTED DUE TO NONCE MISMATCH.')
                 client_state.state['nonce'] = ''
                 continue
             else:
-                session_key = generate_dh_shared_key(peer, peer_public_key)  # Bytes
+                my_private_key = client_state.state['private_dh_keys'][peer]
+                session_key = generate_dh_shared_key(my_private_key, peer_public_key.encode())  # Bytes
                 client_state.state['session_keys'][peer] = (session_key, time.time() + SESSION_KEY_DURATION)
-        # Start a new thread for incoming requests from server
+        # if it starts with 'NK', we have to handle new key generation for a peer process.
+        elif cipher_text[0] == 78 and cipher_text[1] == 75:
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            peer, me, nonce, peer_public_key, parameters = plain.split('|')
+            my_private_key, my_public_key, _ = generate_dh_keys(2, 512, peer, parameters)
+            session_key = generate_dh_shared_key(my_private_key, peer_public_key.encode())  # Bytes
+            client_state.state['session_keys'][peer] = (session_key, time.time() + SESSION_KEY_DURATION)
+
+            # Send back key to the server
+            data = 'BACKWARD_KEY###' + '|'.join([peer, me, nonce, my_public_key, parameters])
+            cipher_text = fernet.encrypt(data.encode())
+            length = "{:03d}".format(len(cipher_text)).encode()
+            connection.send(b'MK' + length + me.encode() + cipher_text)
+        else:
+            handle_response(cipher_text, MOST_RECENT_ENCODED_MESSAGE)
+            # connection.send(refresh_key('B'))
 
 
-start_new_thread(handle_incoming_requests, (ClientMultiSocket,))
+def handle_user_inputs(connection):
+    # send message to server regularly
+    global MOST_RECENT_ENCODED_MESSAGE
+    while True:
+        Input = input(USER_PROMPT)
+        print("\n")
+        flag, em = encode_message(Input)
+        MOST_RECENT_ENCODED_MESSAGE = em
+        if flag == "SUCCESS":
+            data = build_request(em)
+            connection.send(data)
+        else:
+            print(em)
+    # connection.close()
 
-# send message to server regularly
-while True:
-    Input = input(USER_PROMPT)
-    print("\n")
-    flag, em = encode_message(Input)
-    if flag == "SUCCESS":
-        data = build_request(em)
-        ClientMultiSocket.send(data)
-        res = ClientMultiSocket.recv(1024)
-        handle_response(res, em)
-    else:
-        print(em)
-ClientMultiSocket.close()
+
+thread_1 = Thread(target=handle_user_inputs, args=(ClientMultiSocket,))
+thread_1.start()
+thread_2 = Thread(target=handle_incoming_requests, args=(ClientMultiSocket,))
+thread_2.start()
+thread_1.join()
+thread_2.join()

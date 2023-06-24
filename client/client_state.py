@@ -25,5 +25,5 @@ class ClientState:
 
 
 client_state = ClientState(CLIENT_DATA_PATH)
-# client_state.save_data() Run this for the first time to create a new file
+# client_state.save_data() # Run this for the first time to create a new file
 client_state.load_data()
