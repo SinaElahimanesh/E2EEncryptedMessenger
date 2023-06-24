@@ -2,7 +2,7 @@
 import socket
 
 # create client socket
-from client.functions import create_account
+from client.functions import create_account, save_master_key
 from client.parsers import parse_create_account
 
 ClientMultiSocket = socket.socket()
@@ -44,6 +44,13 @@ def encode_message(inp):
     return "FAILURE", "Please enter a valid input"
 
 
+def handle_response(response, em):
+    rest, req_type = em.split('###')
+    if req_type.lower().startswith('create'):
+        username, password = rest.split()[2:]
+        save_master_key(response, username, password)
+
+
 def build_request(em):
     """
     :param em: Request type, which starts with ###. e.g: ###GENERATE_KEY
@@ -51,7 +58,7 @@ def build_request(em):
   """
     if em.lower().startswith("create account"):
         username, password, public_key = parse_create_account(em)
-        return create_account(username, password)
+        return create_account(username, password, public_key)
 
 
 # send message to server regularly
@@ -63,7 +70,7 @@ while True:
         data = build_request(em)
         ClientMultiSocket.send(data)
         res = ClientMultiSocket.recv(1024)
-        print(res.decode('utf-8'))
+        handle_response(res, em)
     else:
         print(em)
 ClientMultiSocket.close()
