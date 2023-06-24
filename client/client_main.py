@@ -1,8 +1,12 @@
 # import libraries
 import socket
-
+import time
+from _thread import start_new_thread
 # create client socket
-from client.functions import create_account, save_master_key
+from cryptography.fernet import Fernet
+
+from client.client_state import client_state, SESSION_KEY_DURATION
+from client.functions import create_account, save_master_key, generate_dh_shared_key
 from client.parsers import parse_create_account
 
 ClientMultiSocket = socket.socket()
@@ -34,7 +38,7 @@ def encode_message(inp):
     elif inp.lower().startswith("3") or inp.lower().startswith("show"):
         return "SUCCESS", inp + "###a"
     elif inp.lower().startswith("4") or inp.lower().startswith("send"):
-        return "SUCCESS", inp + "###a"
+        return "SUCCESS", inp + "###SEND_MESSAGE"
     elif inp.lower().startswith("5") or inp.lower().startswith("create group"):
         return "SUCCESS", inp + "###a"
     elif inp.lower().startswith("6") or inp.lower().startswith("add"):
@@ -60,6 +64,31 @@ def build_request(em):
         username, password, public_key = parse_create_account(em)
         return create_account(username, password, public_key)
 
+
+def handle_incoming_requests(connection):
+    """
+    This function waits for requests from the server for tasks such as key management.
+    :param connection: Socket object
+    """
+    while True:
+        cipher_text = connection.recv(2048)
+        if cipher_text[0] == 83 and cipher_text[1] == 75:  # if it starts with 'SK', we have to handle set key process
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            _, peer, nonce, peer_public_key = plain.split('|')
+            if nonce != client_state.state['nonce']:
+                print('CAUTION: POTENTIAL REPLAY ATTACK DETECTED DUE TO NONCE MISMATCH.')
+                client_state.state['nonce'] = ''
+                continue
+            else:
+                session_key = generate_dh_shared_key(peer, peer_public_key)  # Bytes
+                client_state.state['session_keys'][peer] = (session_key, time.time() + SESSION_KEY_DURATION)
+        # Start a new thread for incoming requests from server
+
+
+start_new_thread(handle_incoming_requests, (ClientMultiSocket,))
 
 # send message to server regularly
 while True:

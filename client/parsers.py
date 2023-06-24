@@ -8,3 +8,11 @@ def parse_create_account(em):
     username, password = rest.split()[2:]
     public = __generate_rsa_key(username, password)
     return username, password, public
+
+
+def parse_send_message(em):
+    rest, req_type = em.split('###')
+    rest = rest.split()
+    message = rest[1]
+    receiver = rest[3]
+    return message, receiver

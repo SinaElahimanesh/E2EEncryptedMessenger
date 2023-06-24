@@ -1,13 +1,18 @@
 import json
 
 CLIENT_DATA_PATH = 'client_data.json'
+SESSION_KEY_DURATION = float(24 * 60 * 60) # In Seconds
 
 
 class ClientState:
     def __init__(self, path):
         self.path = path
         self.state = {
-            'master_key': []
+            'master_key': [],
+            'username': '',  # TODO: Username must be set after login
+            'nonce': '',  # Last Generated Nonce  to be checked in key generation process
+            'private_dh_keys': {},  # Mapping from receivers to clients generated private keys
+            'session_keys': {}  # Mapping from receivers to a tuple: (shared session keys, timestamp)
         }
 
     def load_data(self):
