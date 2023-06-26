@@ -1,6 +1,6 @@
 import json
 
-SERVER_DATA_PATH = 'data.json'
+SERVER_DATA_PATH = 'server/data.json'
 
 
 class ServerState:

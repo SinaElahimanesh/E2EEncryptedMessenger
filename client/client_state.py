@@ -1,6 +1,6 @@
 import json
 
-CLIENT_DATA_PATH = 'client_data.json'
+CLIENT_DATA_PATH = 'client/client_data.json'
 SESSION_KEY_DURATION = float(24 * 60 * 60) # In Seconds
 
 

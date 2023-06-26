@@ -4,7 +4,7 @@ from cryptography.fernet import Fernet
 from common.functions import load_public_key, rsa_encrypt
 from server.server_state import state
 
-PRIVATE_KEY_PATH = '../server_private.txt'
+PRIVATE_KEY_PATH = 'server_private.txt'
 
 
 def __user_exists(username):

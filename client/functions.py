@@ -10,7 +10,7 @@ from client.client_state import client_state
 from common.functions import save_private_key, save_public_key, rsa_encrypt, load_private_key
 from cryptography.hazmat.primitives.asymmetric import dh
 
-PUBLIC_KEY_SERVER_PATH = '../server_pub.txt'
+PUBLIC_KEY_SERVER_PATH = 'server_pub.txt'
 
 
 def __generate_nonce():
