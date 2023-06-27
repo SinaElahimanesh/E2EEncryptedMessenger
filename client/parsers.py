@@ -16,3 +16,8 @@ def parse_send_message(em):
     message = rest[1]
     receiver = rest[3]
     return message, receiver
+
+def parse_login(em):
+    rest, req_type = em.split('###')
+    username, password = rest.split()[1:]
+    return username, password

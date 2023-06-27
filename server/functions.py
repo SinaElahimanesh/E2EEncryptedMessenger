@@ -41,6 +41,40 @@ def handle_create_account(req_params, **kwargs):
                        rsa.PublicKey.load_pkcs1(client_pub_key))
 
 
+def handle_login(req_params, thread_pool, socket, **kwargs):
+    username, h_password = req_params.split('|')
+    thread_pool.add(username, socket)
+    master_key = kwargs['master_key']
+    fernet = Fernet(master_key)
+    if username not in state.state['users']:
+        return b'LO' + fernet.encrypt('USERNAME_DOES_NOT_EXISTS'.encode()) 
+    elif state.state['users'][username]['h_password'] != h_password:
+        return b'LO' + fernet.encrypt('PASSWORD_IS_INCORRECT'.encode()) 
+    else:
+        state.state['users'][username]['status'] = True
+        return b'LO' + fernet.encrypt(username.encode()) 
+    
+
+def handle_show_online_users(**kwargs):
+    master_key = kwargs['master_key']
+    fernet = Fernet(master_key)
+    online_users_lst = []
+    for username_key in state.state['users']:
+        if state.state['users'][username_key]['status']:
+            online_users_lst.append(username_key)
+    return b'SH' + fernet.encrypt(str(online_users_lst).encode()) 
+
+
+def handle_logout(username, **kwargs):
+    master_key = kwargs['master_key']
+    fernet = Fernet(master_key)
+    if username not in state.state['users']:
+        return b'OU' + fernet.encrypt('USERNAME_DOES_NOT_EXISTS'.encode())  
+    state.state['users']['status'] = False
+    return b'OU' + fernet.encrypt('LOGOUT_SUCCESSFULLY'.encode()) 
+
+
+
 def handle_refresh_key(req_params, **kwargs):
     """
     This method set a shared key between two peers A, B. It sends A's parameters to B, receive

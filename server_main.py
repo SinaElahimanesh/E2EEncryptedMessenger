@@ -7,14 +7,14 @@ from _thread import *
 import rsa
 from cryptography.fernet import Fernet
 
-from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key
+from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout
 from server.server_state import state
 from server.thread_pool import ThreadPool
 
 ServerSideSocket = socket.socket()
 # define host and port
 host = '127.0.0.1'
-port = 2006
+port = 2011
 
 # number of threads (number of connected clients)
 ThreadCount = 0
@@ -29,16 +29,22 @@ except socket.error as e:
 print('Socket is listening...')
 ServerSideSocket.listen(5)
 
+for username_key in state.state['users']:
+    state.state['users'][username_key]['status'] = False
+    state.save_data()
+    print(username_key)
+
 
 # handle request
-def handle_client_request(req, **kwargs):
+def handle_client_request(req, connection, **kwargs):
     req_type, req_parameters = req.split("###")
+    print(req_type)
     if req_type == "CREATE_ACCOUNT":
         return handle_create_account(req_parameters, **kwargs)
     elif req_type == "LOGIN":
-        return req_type + "*" + req_parameters
+        return handle_login(req_parameters, thread_pool, connection, **kwargs)
     elif req_type == "SHOW_ONLINE_USERS":
-        return req_type + "*" + req_parameters
+        return handle_show_online_users(**kwargs)
     elif req_type == "SEND_MESSAGE":
         return req_type + "*" + req_parameters
     elif req_type == "CREATE_GROUP":
@@ -59,6 +65,8 @@ def handle_client_request(req, **kwargs):
         return None
     elif req_type == "REMOVE_USER_FROM_GROUP":
         return req_type + "*" + req_parameters
+    elif req_type == "LOGOUT":
+        return handle_logout(req_parameters, **kwargs)
     else:
         return "ERROR: Please enter a valid request type."
 
@@ -74,22 +82,25 @@ def multi_threaded_client(connection):
             client_pub_key = data[-251:]
             data = data[2:-251]
             data = rsa.decrypt(data, private_key).decode()
-            response = handle_client_request(data, client_pub_key=client_pub_key)
+            response = handle_client_request(data, connection, client_pub_key=client_pub_key)
             connection.sendall(response)
 
-        elif data[0] == 77 and data[1] == 75:  # If it starts with MK, it means it has been encrypted with  Master Key
+        elif data[0] == 77 and data[1] == 75:  # If it starts with MK, it means it has been encrypted with Master Key
             length = int(data[2:5])  # Length of cipher
             cipher_text = data[-length:]
             username = data[5:-length].decode()
-            master_key = state.state['users'][username]['master_key'].encode()
-            fernet = Fernet(master_key)
-            plain = fernet.decrypt(cipher_text).decode()
-            # # response = 'Server message: ' + data.decode('utf-8')
-            # if not data:
-            #     break
-            response = handle_client_request(plain, master_key=master_key)
-            if response is not None:
-                connection.sendall(response)
+            if username not in state.state['users']:
+                connection.sendall(b'UNF')
+            else:
+                master_key = state.state['users'][username]['master_key'].encode()
+                fernet = Fernet(master_key)
+                plain = fernet.decrypt(cipher_text).decode()
+                # # response = 'Server message: ' + data.decode('utf-8')
+                # if not data:
+                #     break
+                response = handle_client_request(plain, connection, master_key=master_key)
+                if response is not None:
+                    connection.sendall(response)
     connection.close()
 
 

@@ -6,8 +6,8 @@ from threading import Thread
 from cryptography.fernet import Fernet
 
 from client.client_state import client_state, SESSION_KEY_DURATION
-from client.functions import create_account, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key
-from client.parsers import parse_create_account
+from client.functions import create_account, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout
+from client.parsers import parse_create_account, parse_login
 
 # If the received message from the server is corresponded to a sent message,
 # we need the message to know how to handle that!
@@ -18,7 +18,7 @@ ClientMultiSocket = socket.socket()
 
 # define host and port
 host = '127.0.0.1'
-port = 2006
+port = 2011
 
 # waiting to be connected to the server
 print('Waiting for connection response')
@@ -31,7 +31,7 @@ except socket.error as e:
 res = ClientMultiSocket.recv(1024)
 
 # prompt
-USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Create Account: Create Account [USERNAME] [PASSWORD]\n" + "2. Login: Login [USERNAME] [PASSWORD]\n" + "3. Get List of Online Users: Show Online Users\n" + "4. Send Message: Send [MESSAGE] to [USERNAME]\n" + "5. Create Group: Create Group [GROUP_NAME]\n" + "6. Add User to Group: Add [USER] to [GROUP_NAME]]\n" + "7. Remove User from Group: Remove [USER] from [GROUP_NAME]\n"
+USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Create Account: Create Account [USERNAME] [PASSWORD]\n" + "2. Login: Login [USERNAME] [PASSWORD]\n" + "3. Get List of Online Users: Show Online Users\n" + "4. Send Message: Send [MESSAGE] to [USERNAME]\n" + "5. Create Group: Create Group [GROUP_NAME]\n" + "6. Add User to Group: Add [USER] to [GROUP_NAME]]\n" + "7. Remove User from Group: Remove [USER] from [GROUP_NAME]\n" + "8. Logout From Account: Logout\n"
 
 
 # encode message
@@ -39,9 +39,10 @@ def encode_message(inp):
     if inp.lower().startswith("1") or inp.lower().startswith("create account"):
         return "SUCCESS", inp + "###CREATE_ACCOUNT"
     elif inp.lower().startswith("2") or inp.lower().startswith("login"):
-        return "SUCCESS", inp + "###a"
+        return "SUCCESS", inp + "###LOGIN"
     elif inp.lower().startswith("3") or inp.lower().startswith("show"):
-        return "SUCCESS", inp + "###a"
+        print('unnn', client_state.state['username'])
+        return "SUCCESS", inp + "###SHOW_ONLINE_USERS"
     elif inp.lower().startswith("4") or inp.lower().startswith("send"):
         return "SUCCESS", inp + "###SEND_MESSAGE"
     elif inp.lower().startswith("5") or inp.lower().startswith("create group"):
@@ -50,6 +51,8 @@ def encode_message(inp):
         return "SUCCESS", inp + "###a"
     elif inp.lower().startswith("7") or inp.lower().startswith("remove"):
         return "SUCCESS", inp + "###a"
+    elif inp.lower().startswith("8") or inp.lower().startswith("logout"):
+        return "SUCCESS", inp + "###LOGOUT"
     return "FAILURE", "Please enter a valid input"
 
 
@@ -68,6 +71,14 @@ def build_request(em):
     if em.lower().startswith("create account"):
         username, password, public_key = parse_create_account(em)
         return create_account(username, password, public_key)
+    elif em.lower().startswith("login"):
+        username, password = parse_login(em)
+        return login(username, password)
+    elif em.lower().startswith("show"):
+        return show_online_users(em)
+    elif em.lower().startswith("logout"):
+        return logout(em)
+
 
 
 # Start a new thread for incoming requests from server
@@ -79,7 +90,9 @@ def handle_incoming_requests(connection):
     """
     while True:
         cipher_text = connection.recv(2048)
-        if cipher_text[0] == 83 and cipher_text[1] == 75:  # if it starts with 'SK', we have to handle set key process
+        if cipher_text[0] == 85 and cipher_text[1] == 78 and cipher_text[2] == 70: 
+            print('USERNAME NOT FOUND.')
+        elif cipher_text[0] == 83 and cipher_text[1] == 75:  # if it starts with 'SK', we have to handle set key process
             cipher_text = cipher_text[2:]
             master_key = client_state.state['master_key'].encode()
             fernet = Fernet(master_key)
@@ -111,6 +124,38 @@ def handle_incoming_requests(connection):
             cipher_text = fernet.encrypt(data.encode())
             length = "{:03d}".format(len(cipher_text)).encode()
             connection.send(b'MK' + length + me.encode() + cipher_text)
+        elif cipher_text[0] == 76 and cipher_text[1] == 79:  # if it starts with 'LO', we have to handle set key process
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            resp = plain.split('|')
+            resp = resp[0]
+            if resp == 'USERNAME_DOES_NOT_EXISTS':
+                print('Username does not exist.')
+            elif resp == 'PASSWORD_IS_INCORRECT':
+                print('Password is incorrect.')
+            else:
+                client_state.state['username'] = resp
+                client_state.save_data()
+                print('Login successfully.')
+        elif cipher_text[0] == 83 and cipher_text[1] == 72:  # if it starts with 'SH', we have to handle set key process
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            print(plain)
+        elif cipher_text[0] == 79 and cipher_text[1] == 85:  # if it starts with 'OU', we have to handle set key process
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            client_state.state['username'] = ''
+            client_state.save_data()
+            print(plain)
         else:
             handle_response(cipher_text, MOST_RECENT_ENCODED_MESSAGE)
             # connection.send(refresh_key('B'))
@@ -125,7 +170,9 @@ def handle_user_inputs(connection):
         flag, em = encode_message(Input)
         MOST_RECENT_ENCODED_MESSAGE = em
         if flag == "SUCCESS":
+            print(em)
             data = build_request(em)
+            print(data)
             connection.send(data)
         else:
             print(em)

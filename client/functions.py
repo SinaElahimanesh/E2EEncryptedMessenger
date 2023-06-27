@@ -72,6 +72,36 @@ def create_account(username, password, public_key):
     return b'PU' + rsa_encrypt(data, server_pub) + public_key.save_pkcs1()
 
 
+def login(username, password):
+    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    data = 'LOGIN###' + '|'.join([username, hashed_password])
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + username.encode() + cipher_text
+
+
+def show_online_users(em):
+    data = 'SHOW_ONLINE_USERS###' + client_state.state['username']
+    username = client_state.state['username']
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + username.encode() + cipher_text
+
+
+def logout(em):
+    data = 'LOGOUT###' + client_state.state['username']
+    username = client_state.state['username']
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + username.encode() + cipher_text
+
+
 def refresh_key(peer):
     """
     :param peer: peer username
