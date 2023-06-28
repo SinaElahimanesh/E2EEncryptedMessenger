@@ -2,13 +2,12 @@
 import socket
 import time
 from threading import Thread
-import sys
 # create client socket
 from cryptography.fernet import Fernet
 
-from client.client_state import client_state, SESSION_KEY_DURATION, set_CLIENT_DATA_PATH
-from client.functions import create_account, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout, send_message
-from client.parsers import parse_create_account, parse_login, parse_send_message
+from client.client_state import client_state, SESSION_KEY_DURATION
+from client.functions import create_account, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout
+from client.parsers import parse_create_account, parse_login
 
 # If the received message from the server is corresponded to a sent message,
 # we need the message to know how to handle that!
@@ -20,9 +19,6 @@ ClientMultiSocket = socket.socket()
 # define host and port
 host = '127.0.0.1'
 port = 2011
-
-CLIENT_DATA_PATH = sys.argv[1]
-set_CLIENT_DATA_PATH(CLIENT_DATA_PATH)
 
 # waiting to be connected to the server
 print('Waiting for connection response')
@@ -45,6 +41,7 @@ def encode_message(inp):
     elif inp.lower().startswith("2") or inp.lower().startswith("login"):
         return "SUCCESS", inp + "###LOGIN"
     elif inp.lower().startswith("3") or inp.lower().startswith("show"):
+        print('unnn', client_state.state['username'])
         return "SUCCESS", inp + "###SHOW_ONLINE_USERS"
     elif inp.lower().startswith("4") or inp.lower().startswith("send"):
         return "SUCCESS", inp + "###SEND_MESSAGE"
@@ -81,10 +78,6 @@ def build_request(em):
         return show_online_users(em)
     elif em.lower().startswith("logout"):
         return logout(em)
-    elif em.lower().startswith("send"):
-        username = client_state.state['username']
-        sender_username, receiver_username, message = parse_send_message(em, username)
-        return send_message(sender_username, receiver_username, message)
 
 
 
@@ -172,13 +165,14 @@ def handle_user_inputs(connection):
     # send message to server regularly
     global MOST_RECENT_ENCODED_MESSAGE
     while True:
-        time.sleep(0.5)
         Input = input(USER_PROMPT)
         print("\n")
         flag, em = encode_message(Input)
         MOST_RECENT_ENCODED_MESSAGE = em
         if flag == "SUCCESS":
+            print(em)
             data = build_request(em)
+            print(data)
             connection.send(data)
         else:
             print(em)
