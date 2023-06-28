@@ -74,6 +74,15 @@ def handle_logout(username, **kwargs):
     return b'OU' + fernet.encrypt('LOGOUT_SUCCESSFULLY'.encode()) 
 
 
+def handle_send_message(req_params, **kwargs):
+    thread_pool = kwargs['thread_pool']
+    sender_username, receiver_username, message = req_params.split('|')
+    if receiver_username not in state.state['users']:
+        return b'UNF'
+    master_key = state.state['users'][receiver_username]['master_key'].encode()
+    fernet = Fernet(master_key)
+    return b'LO' + fernet.encrypt(req_params.encode()) , thread_pool.pool.get(receiver_username)
+
 
 def handle_refresh_key(req_params, **kwargs):
     """

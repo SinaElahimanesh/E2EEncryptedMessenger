@@ -102,6 +102,15 @@ def logout(em):
     return b'MK' + length + username.encode() + cipher_text
 
 
+def send_message(sender_username, receiver_username, message):
+    data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, message])
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + sender_username.encode() + cipher_text
+
+
 def refresh_key(peer):
     """
     :param peer: peer username

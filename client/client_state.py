@@ -4,6 +4,10 @@ CLIENT_DATA_PATH = 'client/client_data.json'
 SESSION_KEY_DURATION = float(24 * 60 * 60) # In Seconds
 
 
+def set_CLIENT_DATA_PATH(get_CLIENT_DATA_PATH):
+    global CLIENT_DATA_PATH
+    CLIENT_DATA_PATH = get_CLIENT_DATA_PATH
+
 class ClientState:
     def __init__(self, path):
         self.path = path

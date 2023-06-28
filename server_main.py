@@ -7,7 +7,7 @@ from _thread import *
 import rsa
 from cryptography.fernet import Fernet
 
-from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout
+from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout, handle_send_message
 from server.server_state import state
 from server.thread_pool import ThreadPool
 
@@ -32,13 +32,11 @@ ServerSideSocket.listen(5)
 for username_key in state.state['users']:
     state.state['users'][username_key]['status'] = False
     state.save_data()
-    print(username_key)
 
 
 # handle request
 def handle_client_request(req, connection, **kwargs):
     req_type, req_parameters = req.split("###")
-    print(req_type)
     if req_type == "CREATE_ACCOUNT":
         return handle_create_account(req_parameters, **kwargs)
     elif req_type == "LOGIN":
@@ -46,7 +44,7 @@ def handle_client_request(req, connection, **kwargs):
     elif req_type == "SHOW_ONLINE_USERS":
         return handle_show_online_users(**kwargs)
     elif req_type == "SEND_MESSAGE":
-        return req_type + "*" + req_parameters
+        return handle_send_message(req_parameters, **kwargs)
     elif req_type == "CREATE_GROUP":
         return req_type + "*" + req_parameters
     elif req_type == "ADD_USER_TO_GROUP":
@@ -98,9 +96,15 @@ def multi_threaded_client(connection):
                 # # response = 'Server message: ' + data.decode('utf-8')
                 # if not data:
                 #     break
-                response = handle_client_request(plain, connection, master_key=master_key)
-                if response is not None:
-                    connection.sendall(response)
+                req_type, req_parameters = plain.split("###")
+                if req_type == "SEND_MESSAGE":
+                    response, receiver_connection = handle_send_message(req_parameters, thread_pool=thread_pool)
+                    if response is not None:
+                        receiver_connection.sendall(response)
+                else:
+                    response = handle_client_request(plain, connection, master_key=master_key)
+                    if response is not None:
+                        connection.sendall(response)
     connection.close()
 
 
