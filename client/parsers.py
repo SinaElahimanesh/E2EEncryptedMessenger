@@ -9,6 +9,10 @@ def parse_create_account(em):
     public = __generate_rsa_key(username, password)
     return username, password, public
 
+def parse_create_group(em):
+    rest, req_type = em.split('###')
+    group_name = rest.split()[2]
+    return group_name
 
 def parse_send_message(em):
     rest, req_type = em.split('###')

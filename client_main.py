@@ -3,12 +3,13 @@ import socket
 import time
 from threading import Thread
 import sys
+from termcolor import colored
 # create client socket
 from cryptography.fernet import Fernet
 
 from client.client_state import client_state, SESSION_KEY_DURATION, set_CLIENT_DATA_PATH
-from client.functions import create_account, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout, send_message
-from client.parsers import parse_create_account, parse_login, parse_send_message
+from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout, send_message
+from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
 
 # If the received message from the server is corresponded to a sent message,
 # we need the message to know how to handle that!
@@ -49,11 +50,11 @@ def encode_message(inp):
     elif inp.lower().startswith("4") or inp.lower().startswith("send"):
         return "SUCCESS", inp + "###SEND_MESSAGE"
     elif inp.lower().startswith("5") or inp.lower().startswith("create group"):
-        return "SUCCESS", inp + "###a"
+        return "SUCCESS", inp + "###CREATE_GROUP"
     elif inp.lower().startswith("6") or inp.lower().startswith("add"):
-        return "SUCCESS", inp + "###a"
+        return "SUCCESS", inp + "###ADD"
     elif inp.lower().startswith("7") or inp.lower().startswith("remove"):
-        return "SUCCESS", inp + "###a"
+        return "SUCCESS", inp + "###REMOVE"
     elif inp.lower().startswith("8") or inp.lower().startswith("logout"):
         return "SUCCESS", inp + "###LOGOUT"
     return "FAILURE", "Please enter a valid input"
@@ -74,6 +75,9 @@ def build_request(em):
     if em.lower().startswith("create account"):
         username, password, public_key = parse_create_account(em)
         return create_account(username, password, public_key)
+    elif em.lower().startswith("create group"):
+        group_name = parse_create_group(em)
+        return create_group(group_name)
     elif em.lower().startswith("login"):
         username, password = parse_login(em)
         return login(username, password)
@@ -98,7 +102,7 @@ def handle_incoming_requests(connection):
     while True:
         cipher_text = connection.recv(2048)
         if cipher_text[0] == 85 and cipher_text[1] == 78 and cipher_text[2] == 70: 
-            print('USERNAME NOT FOUND.')
+            print(colored('USERNAME NOT FOUND.', 'red'))
         elif cipher_text[0] == 83 and cipher_text[1] == 75:  # if it starts with 'SK', we have to handle set key process
             cipher_text = cipher_text[2:]
             master_key = client_state.state['master_key'].encode()
