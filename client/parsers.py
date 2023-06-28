@@ -10,12 +10,18 @@ def parse_create_account(em):
     return username, password, public
 
 
-def parse_send_message(em):
+def parse_create_group(em):
     rest, req_type = em.split('###')
-    rest = rest.split()
-    message = rest[1]
-    receiver = rest[3]
-    return message, receiver
+    group_name = rest.split()[2]
+    return group_name
+
+# def parse_send_message(em):
+#     rest, req_type = em.split('###')
+#     rest = rest.split()
+#     message = rest[1]
+#     receiver = rest[3]
+#     print(em, message, receiver)
+#     return message, receiver
 
 
 def parse_login(em):
@@ -25,6 +31,11 @@ def parse_login(em):
 
 
 def parse_send_message(em, sender_username):
+    # rest, req_type = em.split('###')
+    # message, receiver_username = rest.split()[2:]
     rest, req_type = em.split('###')
-    message, receiver_username = rest.split()[2:]
-    return sender_username, receiver_username, message
+    rest = rest.split()
+    message = rest[1]
+    receiver = rest[3]
+    return receiver, message
+    # return sender_username, receiver_username, message

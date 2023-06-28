@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 
 import rsa
 from cryptography.fernet import Fernet
@@ -61,6 +62,8 @@ def load_public_key(username):
     :param username:
     :return: Public Key object
     """
-    with open(f'../client/keys/public/{username}_public.txt', 'rb') as f:
+    if not os.path.isfile(f'keys/public/{username}_public.txt'):
+        return 'ERR'
+    with open(f'keys/public/{username}_public.txt', 'rb') as f:
         public_key = f.read()
     return rsa.PublicKey.load_pkcs1(public_key)

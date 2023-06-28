@@ -1,12 +1,8 @@
 import json
+import os
 
-CLIENT_DATA_PATH = 'client/client_data.json'
+# CLIENT_DATA_PATH = 'client/client_data.json'
 SESSION_KEY_DURATION = float(24 * 60 * 60) # In Seconds
-
-
-def set_CLIENT_DATA_PATH(get_CLIENT_DATA_PATH):
-    global CLIENT_DATA_PATH
-    CLIENT_DATA_PATH = get_CLIENT_DATA_PATH
 
 class ClientState:
     def __init__(self, path):
@@ -20,14 +16,19 @@ class ClientState:
         }
 
     def load_data(self):
+        if not os.path.isfile(self.path):
+            with open(self.path, 'w') as file:
+                json.dump({'master_key': [], 'username': '', 'nonce': '', 'private_dh_keys': {}, 'session_keys': {}}, file)
+        
         with open(self.path, 'r') as file:
             self.state = json.load(file)
+    
 
     def save_data(self):
         with open(self.path, 'w') as file:
             json.dump(self.state, file)
 
-
-client_state = ClientState(CLIENT_DATA_PATH)
-# client_state.save_data() # Run this for the first time to create a new file
-client_state.load_data()
+# CLIENT_DATA_PATH = 'client/client_data.json'
+# client_state = ClientState(CLIENT_DATA_PATH)
+# # client_state.save_data() # Run this for the first time to create a new file
+# client_state.load_data()
