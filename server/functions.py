@@ -60,8 +60,11 @@ def handle_show_online_users(**kwargs):
     fernet = Fernet(master_key)
     online_users_lst = []
     for username_key in state.state['users']:
-        if state.state['users'][username_key]['status']:
-            online_users_lst.append(username_key)
+        print('f', username_key)
+        if username_key != 'status':
+            if state.state['users'][username_key]['status']:
+                online_users_lst.append(username_key)
+                print('g', username_key, state.state['users'][username_key])
     return b'SH' + fernet.encrypt(str(online_users_lst).encode()) 
 
 
