@@ -59,7 +59,6 @@ def handle_client_request(req, connection, **kwargs):
         peer = req_parameters.split('|')[1]
         peer_connection = thread_pool.get(peer)
         kwargs['peer_connection'] = peer_connection
-        print('refersh', req_parameters)
         handle_refresh_key(req_parameters, **kwargs)
         return None
     elif req_type == "REMOVE_USER_FROM_GROUP":

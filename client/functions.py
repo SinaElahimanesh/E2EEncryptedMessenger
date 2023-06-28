@@ -42,7 +42,7 @@ def generate_dh_keys(g, size, peer, client_state, parameters=None):
     return private_key, public_key, parameters_string
 
 
-def generate_dh_shared_key(my_key, peer_public_key):
+def generate_dh_shared_key(my_key, peer_public_key, client_state):
     peer_key_obj = serialization.load_pem_public_key(
         peer_public_key,
         backend=default_backend()
@@ -124,12 +124,16 @@ def logout(em, client_state):
     return b'MK' + length + username.encode() + cipher_text
 
 
-def send_message(sender_username, receiver_username, message, client_state):
-    if 'session_keys' not in client_state.state or receiver_username not in client_state.state['session_keys']:
-        refresh_key(receiver_username, client_state)
-        time.sleep(0.5)
-        print(client_state.state['session_keys'])
-    data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, message])
+def send_message(sender_username, receiver_username, message, client_state, connection):
+    if 'session_keys' not in client_state.state or receiver_username not in client_state.state['session_keys'] or client_state.state['session_keys'][receiver_username][1] >= time.time():
+        request = refresh_key(receiver_username, client_state)
+        connection.send(request)
+        time.sleep(0.3)
+    print(client_state.state['session_keys'][receiver_username])
+    session_key = client_state.state['session_keys'][receiver_username][0].encode()
+    session_fernet = Fernet(session_key)
+    cipher_message = session_fernet.encrypt(message.encode())
+    data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, cipher_message])
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
     cipher_text = fernet.encrypt(data.encode())

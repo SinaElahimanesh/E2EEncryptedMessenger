@@ -92,7 +92,7 @@ def handle_response(response, em):
         save_master_key(masterkey, username, password, client_state)
 
 
-def build_request(em):
+def build_request(em, connection):
     """
     :param em: Request type, which starts with ###. e.g: ###GENERATE_KEY
     :return: The corresponding request data to send based on request type.
@@ -119,7 +119,7 @@ def build_request(em):
     elif em.lower().startswith("send"):
         username = client_state.state['username']
         receiver_username, message = parse_send_message(em, username)
-        return send_message(username, receiver_username, message, client_state)
+        return send_message(username, receiver_username, message, client_state, connection)
 
 
 
@@ -162,7 +162,6 @@ def handle_incoming_requests(connection):
             my_private_key, my_public_key, _ = generate_dh_keys(2, 512, peer, client_state, parameters)
             session_key = generate_dh_shared_key(my_private_key, peer_public_key.encode(), client_state)  # Bytes
             client_state.state['session_keys'][peer] = (session_key, time.time() + SESSION_KEY_DURATION)
-            print('refresh is working!', client_state)
             # Send back key to the server
             data = 'BACKWARD_KEY###' + '|'.join([peer, me, nonce, my_public_key, parameters])
             cipher_text = fernet.encrypt(data.encode())
@@ -225,7 +224,7 @@ def handle_user_inputs(connection):
         flag, em = encode_message(Input)
         MOST_RECENT_ENCODED_MESSAGE = em
         if flag == "SUCCESS":
-            data = build_request(em)
+            data = build_request(em, connection)
             if data == 'ERR':
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
             else:
