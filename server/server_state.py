@@ -7,8 +7,10 @@ class ServerState:
     def __init__(self, path):
         self.path = path
         self.state = {
-            'users': {} # Dictionary from usernames to their attributes
+            'users': {}, # Dictionary from usernames to their attributes
+            'groups': {} #Dictionary from groupname to their users and attributes
         }
+        
 
     def load_data(self):
         with open(self.path, 'r') as file:

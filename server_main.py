@@ -7,7 +7,7 @@ from _thread import *
 import rsa
 from cryptography.fernet import Fernet
 
-from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout, handle_send_message
+from server.functions import handle_create_account, handle_create_group, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout, handle_send_message
 from server.server_state import state
 from server.thread_pool import ThreadPool
 
@@ -46,7 +46,7 @@ def handle_client_request(req, connection, **kwargs):
     elif req_type == "SEND_MESSAGE":
         return handle_send_message(req_parameters, **kwargs)
     elif req_type == "CREATE_GROUP":
-        return req_type + "*" + req_parameters
+        return handle_create_group(req_parameters, **kwargs)
     elif req_type == "ADD_USER_TO_GROUP":
         return req_type + "*" + req_parameters
     elif req_type == "BACKWARD_KEY":

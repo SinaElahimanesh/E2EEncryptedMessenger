@@ -1,5 +1,6 @@
 import rsa
 from cryptography.fernet import Fernet
+from termcolor import colored
 
 from common.functions import load_public_key, rsa_encrypt
 from server.server_state import state
@@ -10,6 +11,8 @@ PRIVATE_KEY_PATH = 'server_private.txt'
 def __user_exists(username):
     return username in state.state['users']
 
+def __group_exist(group_name):
+    return group_name in state.state['groups']
 
 def load_private_key():
     with open(PRIVATE_KEY_PATH, 'rb') as file:
@@ -40,6 +43,22 @@ def handle_create_account(req_params, **kwargs):
     return rsa_encrypt(master_key.decode(),
                        rsa.PublicKey.load_pkcs1(client_pub_key))
 
+def handle_create_group(req_params, **kwargs):
+    #TODO
+    group_name = req_params
+    # group_pub_key = kwargs['session_key']
+    if __group_exist(group_name):
+        print(colored('A group with this name exist.', 'red'))
+    else:
+        master_key = Fernet.generate_key()
+        group = {
+            'master_key' : master_key.decode(), #Do we need this? I think
+            'session_key' : '',
+            'admin' : '',
+            'users' : []
+        }
+        print(colored('Group Created!', 'green'))
+    pass
 
 def handle_login(req_params, thread_pool, socket, **kwargs):
     username, h_password = req_params.split('|')
