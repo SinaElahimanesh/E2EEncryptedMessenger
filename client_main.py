@@ -139,10 +139,8 @@ def handle_incoming_requests(connection):
             plain = fernet.decrypt(cipher_text).decode()
             resp = plain.split('|')
             resp = resp[0]
-            if resp == 'USERNAME_DOES_NOT_EXISTS':
-                print('Username does not exist.')
-            elif resp == 'PASSWORD_IS_INCORRECT':
-                print('Password is incorrect.')
+            if resp == 'USERNAME_DOES_NOT_EXISTS' or resp == 'PASSWORD_IS_INCORRECT':
+                print('Username or password is incorrect.')
             else:
                 client_state.state['username'] = resp
                 client_state.save_data()
