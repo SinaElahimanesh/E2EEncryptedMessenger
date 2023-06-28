@@ -88,7 +88,7 @@ def login(username, password, client_state):
     fernet = Fernet(master_key)
     cipher_text = fernet.encrypt(data.encode())
     length = "{:03d}".format(len(cipher_text)).encode()
-    return b'CG' + length + group_name.encode() + cipher_text
+    return b'CG' + length + username.encode() + cipher_text
 
 
 def login(username, password, public_key):
