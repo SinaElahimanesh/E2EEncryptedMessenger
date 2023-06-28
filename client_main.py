@@ -87,7 +87,7 @@ def handle_response(response, em):
             print(colored('USERNAME OR PASSWORD IS INCORRECT.', 'red'))
         else:
             client_state.state['username'] = username
-            client_state.save_data()
+            # client_state.save_data()
             print(colored('Login successfully.', 'green'))
         save_master_key(masterkey, username, password, client_state)
 
@@ -188,7 +188,7 @@ def handle_incoming_requests(connection):
             fernet = Fernet(master_key)
             # It must be in this format: (username, peer, nonce, peer_private_key)
             plain = fernet.decrypt(cipher_text).decode()
-            print(colored('List of online users:\n', 'green'))
+            print(colored('List of online users:', 'green'))
             for u in ast.literal_eval(plain):
                 print(colored(u, 'green'))
         elif cipher_text[0] == 79 and cipher_text[1] == 85:  # if it starts with 'OU', we have to handle set key process
@@ -198,7 +198,7 @@ def handle_incoming_requests(connection):
             # It must be in this format: (username, peer, nonce, peer_private_key)
             plain = fernet.decrypt(cipher_text).decode()
             client_state.state['username'] = ''
-            client_state.save_data()
+            # client_state.save_data()
             if plain == 'USERNAME_DOES_NOT_EXISTS':
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
             elif plain == 'LOGOUT_SUCCESSFULLY':
