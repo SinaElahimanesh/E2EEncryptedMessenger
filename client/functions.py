@@ -72,7 +72,7 @@ def create_account(username, password, public_key):
         server_pub = rsa.PublicKey.load_pkcs1(file.read())
     return b'PU' + rsa_encrypt(data, server_pub) + public_key.save_pkcs1()
 
-def create_group(group_name):
+def create_group(group_name, client_state):
     data = 'CREATE_GROUP###' + '|'.join(group_name)
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
@@ -81,7 +81,7 @@ def create_group(group_name):
     return b'CG' + length + group_name.encode() + cipher_text
 
 
-def login(username, password):
+def login(username, password, client_state):
     hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
     data = 'LOGIN###' + '|'.join([username, hashed_password])
     master_key = client_state.state['master_key'].encode()
