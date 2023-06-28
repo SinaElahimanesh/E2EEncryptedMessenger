@@ -5,8 +5,9 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+import time
 
-from client.client_state import client_state
+# from client_main import client_state
 from common.functions import save_private_key, save_public_key, rsa_encrypt, load_private_key
 from cryptography.hazmat.primitives.asymmetric import dh
 
@@ -24,7 +25,7 @@ def __generate_rsa_key(username, password):
     return public
 
 
-def generate_dh_keys(g, size, peer, parameters=None):
+def generate_dh_keys(g, size, peer, client_state, parameters=None):
     if parameters is None:
         parameters = dh.generate_parameters(generator=g, key_size=size, backend=default_backend())
     else:
@@ -57,7 +58,7 @@ def generate_dh_shared_key(my_key, peer_public_key):
     return derived_key
 
 
-def save_master_key(response, username, password):
+def save_master_key(response, username, password, client_state):
     private_key = load_private_key(username, password)
     master_key = rsa.decrypt(response, private_key).decode()
     client_state.state['master_key'] = master_key
@@ -87,10 +88,23 @@ def login(username, password):
     fernet = Fernet(master_key)
     cipher_text = fernet.encrypt(data.encode())
     length = "{:03d}".format(len(cipher_text)).encode()
-    return b'MK' + length + username.encode() + cipher_text
+    return b'CG' + length + group_name.encode() + cipher_text
 
 
-def show_online_users(em):
+def login(username, password, public_key):
+    hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    data = 'LOGIN###' + '|'.join([username, hashed_password])
+    with open(PUBLIC_KEY_SERVER_PATH, 'rb') as file:
+        server_pub = rsa.PublicKey.load_pkcs1(file.read())
+    return b'PU' + rsa_encrypt(data, server_pub) + public_key.save_pkcs1()
+    # master_key = client_state.state['master_key'].encode()
+    # fernet = Fernet(master_key)
+    # cipher_text = fernet.encrypt(data.encode())
+    # length = "{:03d}".format(len(cipher_text)).encode()
+    # return b'MK' + length + username.encode() + cipher_text
+
+
+def show_online_users(em, client_state):
     data = 'SHOW_ONLINE_USERS###' + client_state.state['username']
     username = client_state.state['username']
     master_key = client_state.state['master_key'].encode()
@@ -100,7 +114,7 @@ def show_online_users(em):
     return b'MK' + length + username.encode() + cipher_text
 
 
-def logout(em):
+def logout(em, client_state):
     data = 'LOGOUT###' + client_state.state['username']
     username = client_state.state['username']
     master_key = client_state.state['master_key'].encode()
@@ -110,7 +124,11 @@ def logout(em):
     return b'MK' + length + username.encode() + cipher_text
 
 
-def send_message(sender_username, receiver_username, message):
+def send_message(sender_username, receiver_username, message, client_state):
+    if 'session_keys' not in client_state.state or receiver_username not in client_state.state['session_keys']:
+        refresh_key(receiver_username, client_state)
+        time.sleep(0.5)
+        print(client_state.state['session_keys'])
     data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, message])
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
@@ -119,7 +137,7 @@ def send_message(sender_username, receiver_username, message):
     return b'MK' + length + sender_username.encode() + cipher_text
 
 
-def refresh_key(peer):
+def refresh_key(peer, client_state):
     """
     :param peer: peer username
     :return: The corresponding request to be sent(bytes), nonce(string), dh private key
@@ -128,7 +146,7 @@ def refresh_key(peer):
     client_username = client_state.state['username']
     nonce = __generate_nonce()
     client_state.state['nonce'] = nonce
-    private_key, public_key, parameters = generate_dh_keys(2, 512, peer)
+    private_key, public_key, parameters = generate_dh_keys(2, 512, peer, client_state)
     data = 'REFRESH_KEY###' + '|'.join([client_username, peer, nonce, public_key, parameters])
 
     # Apply encryption
