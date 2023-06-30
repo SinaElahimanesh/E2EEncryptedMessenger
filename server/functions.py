@@ -83,7 +83,7 @@ def handle_logout(username, **kwargs):
 
 def handle_send_message(req_params, **kwargs):
     thread_pool = kwargs['thread_pool']
-    sender_username, receiver_username, message = req_params.split('|')
+    sender_username, receiver_username, _, _ = req_params.split('|')
     if receiver_username not in state.state['users']:
         return b'UNF', thread_pool.pool.get(sender_username)
     master_key = state.state['users'][receiver_username]['master_key'].encode()

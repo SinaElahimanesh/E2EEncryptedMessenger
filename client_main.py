@@ -4,13 +4,14 @@ import time
 from threading import Thread
 import sys
 from termcolor import colored
+import base64
 # create client socket
 from cryptography.fernet import Fernet
 from termcolor import colored
 import ast
 
 from client.client_state import SESSION_KEY_DURATION, ClientState
-from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout, send_message
+from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout, send_message, verify_hmac
 from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
 from common.functions import load_public_key
 
@@ -74,8 +75,11 @@ def encode_message(inp):
 
 def handle_response(response, em):
     global MOST_RECENT_ENCODED_MESSAGE
-    rest, req_type = em.split('###')
     MOST_RECENT_ENCODED_MESSAGE = ''
+    if em != '':
+        rest, req_type = em.split('###')
+    else:
+        rest, req_type = '', ''
     if req_type.lower().startswith('create'):
         username, password = rest.split()[2:]
         save_master_key(response, username, password, client_state)
@@ -90,7 +94,22 @@ def handle_response(response, em):
             # client_state.save_data()
             print(colored('Login successfully.', 'green'))
         save_master_key(masterkey, username, password, client_state)
+    else:
+        cipher_text = response[2:]
+        master_key = client_state.state['master_key'].encode()
+        fernet = Fernet(master_key)
+        plain = fernet.decrypt(cipher_text).decode()
 
+        sender, _, m, hmac_tag = plain.split('|')
+        session_key = base64.urlsafe_b64encode(client_state.state['session_keys'][sender][0])
+        session_fernet = Fernet(session_key)
+        m_decoded = session_fernet.decrypt(eval(m))
+        if verify_hmac(session_key, m_decoded, eval(hmac_tag)): # + b'\xbcRd'
+            print(colored(f'A Message From {sender}: {m_decoded.decode("utf-8") }', 'cyan'))
+            client_state.save_chats('55', sender, m_decoded, client_state.state['username'])
+        else:
+            print(colored('ATTACK DETECTED! MESSAGE HAS BEEN CHANGED!' ,'red'))
+        
 
 def build_request(em, connection):
     """
@@ -202,13 +221,6 @@ def handle_incoming_requests(connection):
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
             elif plain == 'LOGOUT_SUCCESSFULLY':
                 print(colored('Logout successfully.', 'green'))
-        elif MOST_RECENT_ENCODED_MESSAGE == '':
-            cipher_text = cipher_text[2:]
-            master_key = client_state.state['master_key'].encode()
-            fernet = Fernet(master_key)
-            plain = fernet.decrypt(cipher_text).decode()
-            sender, _, m = plain.split('|')
-            print(colored(f'A Message From {sender}: {m}', 'cyan'))
         else:
             handle_response(cipher_text, MOST_RECENT_ENCODED_MESSAGE)
             # connection.send(refresh_key('B'))

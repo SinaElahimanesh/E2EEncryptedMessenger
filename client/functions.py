@@ -6,6 +6,9 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 import time
+import base64
+import hmac
+
 
 # from client_main import client_state
 from common.functions import save_private_key, save_public_key, rsa_encrypt, load_private_key
@@ -129,11 +132,14 @@ def send_message(sender_username, receiver_username, message, client_state, conn
         request = refresh_key(receiver_username, client_state)
         connection.send(request)
         time.sleep(0.3)
-    print(client_state.state['session_keys'][receiver_username])
-    session_key = client_state.state['session_keys'][receiver_username][0].encode()
+    session_key = base64.urlsafe_b64encode(client_state.state['session_keys'][receiver_username][0])
     session_fernet = Fernet(session_key)
     cipher_message = session_fernet.encrypt(message.encode())
-    data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, cipher_message])
+
+    # Create HMAC
+    hmac_tag = create_hmac(session_key, message.encode())
+
+    data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, str(cipher_message), str(hmac_tag)])
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
     cipher_text = fernet.encrypt(data.encode())
@@ -159,3 +165,20 @@ def refresh_key(peer, client_state):
     cipher_text = fernet.encrypt(data.encode())
     length = "{:03d}".format(len(cipher_text)).encode()
     return b'MK' + length + client_username.encode() + cipher_text
+
+
+# Function to create HMAC
+def create_hmac(key, message):
+    hmac_obj = hmac.new(key, message, hashlib.sha256)
+    return hmac_obj.digest()
+
+# Function to verify HMAC
+def verify_hmac(key, message, hmac_tag):
+    hmac_obj = hmac.new(key, message, hashlib.sha256)
+    generated_hmac_tag = hmac_obj.digest()
+
+    if hmac.compare_digest(generated_hmac_tag, hmac_tag):
+        return True
+    else:
+        return False
+
