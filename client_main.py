@@ -9,9 +9,10 @@ import base64
 from cryptography.fernet import Fernet
 from termcolor import colored
 import ast
+import hashlib
 
 from client.client_state import SESSION_KEY_DURATION, ClientState
-from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, \
+from client.functions import create_account, create_group, save_master_key, save_master_key_login, generate_dh_shared_key, generate_dh_keys, \
     refresh_key, login, show_online_users, logout, send_message, is_password_strong, verify_hmac
 from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
 from common.functions import load_public_key
@@ -27,11 +28,12 @@ ClientMultiSocket = socket.socket()
 host = '127.0.0.1'
 port = 2011
 
+user_password = ''
+
 CLIENT_DATA_PATH = sys.argv[1]
 
 client_state = ClientState(CLIENT_DATA_PATH)
 # client_state.load_data()
-
 
 # waiting to be connected to the server
 print('Waiting for connection response')
@@ -44,7 +46,7 @@ except socket.error as e:
 res = ClientMultiSocket.recv(1024)
 
 # prompt
-USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Create Account: Create Account [USERNAME] [PASSWORD]\n" + "2. Login: Login [USERNAME] [PASSWORD]\n" + "3. Get List of Online Users: Show Online Users\n" + "4. Send Message: Send [MESSAGE] to [USERNAME]\n" + "5. Create Group: Create Group [GROUP_NAME]\n" + "6. Add User to Group: Add [USER] to [GROUP_NAME]]\n" + "7. Remove User from Group: Remove [USER] from [GROUP_NAME]\n" + "8. Logout From Account: Logout\n"
+USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Create Account: Create Account [USERNAME] [PASSWORD]\n" + "2. Login: Login [USERNAME] [PASSWORD]\n" + "3. Get List of Online Users: Show Online Users\n" + "4. Send Message: Send [MESSAGE] to [USERNAME]\n" + "5. Create Group: Create Group [GROUP_NAME]\n" + "6. Add User to Group: Add [USER] to [GROUP_NAME]]\n" + "7. Remove User from Group: Remove [USER] from [GROUP_NAME]\n" + "8. Logout From Account: Logout\n" + "9. Show Chat History: Show Chat History\n"
 
 
 # encode message
@@ -63,20 +65,27 @@ def encode_message(inp):
         return "SUCCESS", inp + "###SEND_MESSAGE"
     elif inp.lower().startswith("5") or inp.lower().startswith("create group"):
         return "SUCCESS", inp + "###CREATE_GROUP"
-        return "SUCCESS", inp + "###CREATE_GROUP"
     elif inp.lower().startswith("6") or inp.lower().startswith("add"):
-        return "SUCCESS", inp + "###ADD"
         return "SUCCESS", inp + "###ADD"
     elif inp.lower().startswith("7") or inp.lower().startswith("remove"):
         return "SUCCESS", inp + "###REMOVE"
-        return "SUCCESS", inp + "###REMOVE"
     elif inp.lower().startswith("8") or inp.lower().startswith("logout"):
         return "SUCCESS", inp + "###LOGOUT"
+    elif inp.lower().startswith("9") or inp.lower().startswith("show chat"):
+        print(colored('Chat History', 'cyan'))
+        # print(client_state.load_chats(user_password, client_state.state['username']))
+        for m_json in client_state.load_chats(user_password, client_state.state['username']):
+            # print(m_json)
+            sender = m_json['sender']
+            message = m_json['message']
+            print(colored(f'Message from {sender}: {message}', 'cyan'))
+        return "CLIENTSIDE", inp + "###CHAT_HISTORY"
     return "FAILURE", "Please enter a valid input"
 
 
 def handle_response(response, em):
     global MOST_RECENT_ENCODED_MESSAGE
+    global user_password
     MOST_RECENT_ENCODED_MESSAGE = ''
     if em != '':
         rest, req_type = em.split('###')
@@ -84,19 +93,24 @@ def handle_response(response, em):
         rest, req_type = '', ''
     if req_type.lower().startswith('create'):
         username, password = rest.split()[2:]
+        user_password = password
         save_master_key(response, username, password, client_state)
         print(colored('User registered successfully.', 'green'))
     if req_type.lower().startswith('login'):
         masterkey = response[2:]
         username, password = rest.split()[1:]
-
-        if response == 'USERNAME_DOES_NOT_EXISTS' or response == 'PASSWORD_IS_INCORRECT':
+        hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        fernet = Fernet(base64.urlsafe_b64encode(hashlib.sha256(hashed_password.encode('utf-8')).hexdigest()[:32].encode('utf-8')))
+        plain = fernet.decrypt(masterkey).decode()
+        if plain == 'USERNAME_DOES_NOT_EXISTS' or plain == 'PASSWORD_IS_INCORRECT':
             print(colored('USERNAME OR PASSWORD IS INCORRECT.', 'red'))
         else:
             client_state.state['username'] = username
             # client_state.save_data()
             print(colored('Login successfully.', 'green'))
-        save_master_key(masterkey, username, password, client_state)
+            # save_master_key(bytes(plain), username, password, client_state)
+            save_master_key_login(plain, client_state)
+            client_state.reset_chats(username)
     else:
         cipher_text = response[2:]
         master_key = client_state.state['master_key'].encode()
@@ -109,7 +123,7 @@ def handle_response(response, em):
         m_decoded = session_fernet.decrypt(eval(m))
         if verify_hmac(session_key, m_decoded, eval(hmac_tag)): # + b'\xbcRd'
             print(colored(f'A Message From {sender}: {m_decoded.decode("utf-8") }', 'cyan'))
-            client_state.save_chats('55', sender, m_decoded, client_state.state['username'])
+            client_state.save_chats(user_password, sender, m_decoded, client_state.state['username'])
         else:
             print(colored('ATTACK DETECTED! MESSAGE HAS BEEN CHANGED!' ,'red'))
         
@@ -240,17 +254,18 @@ def handle_user_inputs(connection):
         Input = input(USER_PROMPT)
         print("\n")
         flag, em = encode_message(Input)
-        MOST_RECENT_ENCODED_MESSAGE = em
-        if flag == "SUCCESS":
-            data = build_request(em, connection)
-            if data == 'ERR':
-                print(colored('USERNAME DOES NOT FOUND.', 'red'))
-            elif data == 'WEAK_PASSWORD':
-                print(colored(__get_weak_password_message()), 'red')
+        if not flag =="CLIENTSIDE":
+            MOST_RECENT_ENCODED_MESSAGE = em
+            if flag == "SUCCESS":
+                data = build_request(em, connection)
+                if data == 'ERR':
+                    print(colored('USERNAME DOES NOT FOUND.', 'red'))
+                elif data == 'WEAK_PASSWORD':
+                    print(colored(__get_weak_password_message()), 'red')
+                else:
+                    connection.send(data)
             else:
-                connection.send(data)
-        else:
-            print(em)
+                print(em)
     # connection.close()
 
 

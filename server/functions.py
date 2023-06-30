@@ -1,5 +1,7 @@
 import rsa
 from cryptography.fernet import Fernet
+import base64
+import hashlib
 
 from common.functions import load_public_key, rsa_encrypt
 from server.server_state import state
@@ -48,17 +50,18 @@ def handle_login(req_params, thread_pool, socket, **kwargs):
     # master_key = kwargs['master_key']
     client_pub_key = kwargs['client_pub_key']
     # fernet = Fernet(master_key)
+    fernet = Fernet(base64.urlsafe_b64encode(hashlib.sha256(h_password.encode('utf-8')).hexdigest()[:32].encode('utf-8')))
     if username not in state.state['users']:
-        return b'LO' + rsa_encrypt('USERNAME_DOES_NOT_EXISTS', rsa.PublicKey.load_pkcs1(client_pub_key))
-        # return b'LO' + fernet.encrypt('USERNAME_DOES_NOT_EXISTS'.encode()) 
+        # return b'LO' +  rsa_encrypt('USERNAME_DOES_NOT_EXISTS', rsa.PublicKey.load_pkcs1(client_pub_key))
+        return b'LO' + fernet.encrypt('USERNAME_DOES_NOT_EXISTS'.encode()) 
     elif state.state['users'][username]['h_password'] != h_password:
-        return b'LO' + rsa_encrypt('PASSWORD_IS_INCORRECT', rsa.PublicKey.load_pkcs1(client_pub_key))
-        # return b'LO' + fernet.encrypt('PASSWORD_IS_INCORRECT'.encode()) 
+        # return b'LO' + rsa_encrypt('PASSWORD_IS_INCORRECT', rsa.PublicKey.load_pkcs1(client_pub_key))
+        return b'LO' + fernet.encrypt('PASSWORD_IS_INCORRECT'.encode()) 
     else:
         state.state['users'][username]['status'] = True
-        return b'LO' + rsa_encrypt(state.state['users'][username]['master_key'],
-                                   rsa.PublicKey.load_pkcs1(client_pub_key))
-        # return b'LO' + fernet.encrypt(state.state['users'][username]['master_key']) 
+        # return b'LO' + rsa_encrypt(state.state['users'][username]['master_key'],
+        #                            rsa.PublicKey.load_pkcs1(client_pub_key))
+        return b'LO' + fernet.encrypt(state.state['users'][username]['master_key'].encode()) 
 
 
 def handle_show_online_users(**kwargs):
