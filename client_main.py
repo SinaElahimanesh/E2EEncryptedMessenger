@@ -11,7 +11,8 @@ from termcolor import colored
 import ast
 
 from client.client_state import SESSION_KEY_DURATION, ClientState
-from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, refresh_key, login, show_online_users, logout, send_message, verify_hmac
+from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, \
+    refresh_key, login, show_online_users, logout, send_message, is_password_strong, verify_hmac
 from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
 from common.functions import load_public_key
 
@@ -27,7 +28,6 @@ host = '127.0.0.1'
 port = 2011
 
 CLIENT_DATA_PATH = sys.argv[1]
-
 
 client_state = ClientState(CLIENT_DATA_PATH)
 # client_state.load_data()
@@ -49,7 +49,9 @@ USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Cre
 
 # encode message
 def encode_message(inp):
-    if client_state.state['username'] == '' and (not inp.lower().startswith("2") and not inp.lower().startswith("login")) and (not inp.lower().startswith("1") and not inp.lower().startswith("create account")):
+    if client_state.state['username'] == '' and (
+            not inp.lower().startswith("2") and not inp.lower().startswith("login")) and (
+            not inp.lower().startswith("1") and not inp.lower().startswith("create account")):
         return "FAILURE", "Please login first."
     if inp.lower().startswith("1") or inp.lower().startswith("create account"):
         return "SUCCESS", inp + "###CREATE_ACCOUNT"
@@ -83,10 +85,11 @@ def handle_response(response, em):
     if req_type.lower().startswith('create'):
         username, password = rest.split()[2:]
         save_master_key(response, username, password, client_state)
+        print(colored('User registered successfully.', 'green'))
     if req_type.lower().startswith('login'):
         masterkey = response[2:]
         username, password = rest.split()[1:]
-        
+
         if response == 'USERNAME_DOES_NOT_EXISTS' or response == 'PASSWORD_IS_INCORRECT':
             print(colored('USERNAME OR PASSWORD IS INCORRECT.', 'red'))
         else:
@@ -118,6 +121,8 @@ def build_request(em, connection):
   """
     if em.lower().startswith("create account"):
         username, password, public_key = parse_create_account(em)
+        if not is_password_strong(password):
+            return 'WEAK_PASSWORD'
         return create_account(username, password, public_key)
     elif em.lower().startswith("create group"):
         group_name = parse_create_group(em)
@@ -141,7 +146,6 @@ def build_request(em, connection):
         return send_message(username, receiver_username, message, client_state, connection)
 
 
-
 # Start a new thread for incoming requests from server
 
 def handle_incoming_requests(connection):
@@ -153,7 +157,7 @@ def handle_incoming_requests(connection):
         cipher_text = connection.recv(2048)
         if cipher_text == b'':
             continue
-        if cipher_text[0] == 85 and cipher_text[1] == 78 and cipher_text[2] == 70: 
+        if cipher_text[0] == 85 and cipher_text[1] == 78 and cipher_text[2] == 70:
             print(colored('USERNAME DOES NOT FOUND.', 'red'))
         elif cipher_text[0] == 83 and cipher_text[1] == 75:  # if it starts with 'SK', we have to handle set key process
             cipher_text = cipher_text[2:]
@@ -221,6 +225,15 @@ def handle_incoming_requests(connection):
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
             elif plain == 'LOGOUT_SUCCESSFULLY':
                 print(colored('Logout successfully.', 'green'))
+        elif MOST_RECENT_ENCODED_MESSAGE == '':
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            sender, _, m = plain.split('|')
+            print(colored(f'A Message From {sender}: {m}', 'cyan'))
+        elif cipher_text[0] == 85 and cipher_text[1] == 69:  # if it starts with 'UE', it means the user already exists
+            print(colored('User with this username already exists.', 'red'))
         else:
             handle_response(cipher_text, MOST_RECENT_ENCODED_MESSAGE)
             # connection.send(refresh_key('B'))
@@ -239,11 +252,22 @@ def handle_user_inputs(connection):
             data = build_request(em, connection)
             if data == 'ERR':
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
+            elif data == 'WEAK_PASSWORD':
+                print(colored(__get_weak_password_message()), 'red')
             else:
                 connection.send(data)
         else:
             print(em)
     # connection.close()
+
+
+def __get_weak_password_message():
+    return 'Choose a password which has the following criteria:\n' + \
+           '1. It should have a minimum length of 8 characters.\n' + \
+           '2. It should contain at least one uppercase letter.\n' + \
+           '3. It should contain at least one lowercase letter.\n' + \
+           '4. It should contain at least one digit.\n' + \
+           '5. It should contain at least one special character from the set of special characters.'
 
 
 thread_1 = Thread(target=handle_user_inputs, args=(ClientMultiSocket,))

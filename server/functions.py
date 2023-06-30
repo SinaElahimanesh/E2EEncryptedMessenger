@@ -8,7 +8,8 @@ PRIVATE_KEY_PATH = 'server_private.txt'
 
 
 def __user_exists(username):
-    return username in state.state['users']
+    all_usernames = list(map(lambda x: x.lower(), list(state.state['users'].keys())))
+    return username.lower() in all_usernames
 
 
 def load_private_key():
@@ -26,7 +27,7 @@ def handle_create_account(req_params, **kwargs):
     username, h_password = req_params.split('|')
     client_pub_key = kwargs['client_pub_key']
     if __user_exists(username):
-        master_key = state.state['users'][username]['master_key'].encode()
+        return b'UE'  # User Exist
     else:
         master_key = Fernet.generate_key()
         user = {
@@ -37,7 +38,7 @@ def handle_create_account(req_params, **kwargs):
         }
         state.state['users'][username] = user
         state.save_data()
-    return rsa_encrypt(master_key.decode(),
+    return rsa_encrypt(master_key.decode(),  # If everything is fine, add SU flag
                        rsa.PublicKey.load_pkcs1(client_pub_key))
 
 
@@ -55,9 +56,10 @@ def handle_login(req_params, thread_pool, socket, **kwargs):
         # return b'LO' + fernet.encrypt('PASSWORD_IS_INCORRECT'.encode()) 
     else:
         state.state['users'][username]['status'] = True
-        return b'LO' + rsa_encrypt(state.state['users'][username]['master_key'], rsa.PublicKey.load_pkcs1(client_pub_key))
+        return b'LO' + rsa_encrypt(state.state['users'][username]['master_key'],
+                                   rsa.PublicKey.load_pkcs1(client_pub_key))
         # return b'LO' + fernet.encrypt(state.state['users'][username]['master_key']) 
-    
+
 
 def handle_show_online_users(**kwargs):
     master_key = kwargs['master_key']
@@ -69,16 +71,16 @@ def handle_show_online_users(**kwargs):
             if state.state['users'][username_key]['status']:
                 online_users_lst.append(username_key)
                 print('g', username_key, state.state['users'][username_key])
-    return b'SH' + fernet.encrypt(str(online_users_lst).encode()) 
+    return b'SH' + fernet.encrypt(str(online_users_lst).encode())
 
 
 def handle_logout(username, **kwargs):
     master_key = kwargs['master_key']
     fernet = Fernet(master_key)
     if username not in state.state['users']:
-        return b'OU' + fernet.encrypt(b'USERNAME_DOES_NOT_EXISTS'.encode())  
+        return b'OU' + fernet.encrypt(b'USERNAME_DOES_NOT_EXISTS'.encode())
     state.state['users']['status'] = False
-    return b'OU' + fernet.encrypt('LOGOUT_SUCCESSFULLY'.encode()) 
+    return b'OU' + fernet.encrypt('LOGOUT_SUCCESSFULLY'.encode())
 
 
 def handle_send_message(req_params, **kwargs):
@@ -88,7 +90,7 @@ def handle_send_message(req_params, **kwargs):
         return b'UNF', thread_pool.pool.get(sender_username)
     master_key = state.state['users'][receiver_username]['master_key'].encode()
     fernet = Fernet(master_key)
-    return b'LO' + fernet.encrypt(req_params.encode()) , thread_pool.pool.get(receiver_username)
+    return b'LO' + fernet.encrypt(req_params.encode()), thread_pool.pool.get(receiver_username)
 
 
 def handle_refresh_key(req_params, **kwargs):
