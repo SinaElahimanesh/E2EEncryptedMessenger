@@ -72,6 +72,7 @@ def create_account(username, password, public_key):
         server_pub = rsa.PublicKey.load_pkcs1(file.read())
     return b'PU' + rsa_encrypt(data, server_pub) + public_key.save_pkcs1()
 
+
 def create_group(group_name, client_state):
     data = 'CREATE_GROUP###' + '|'.join(group_name)
     master_key = client_state.state['master_key'].encode()
@@ -125,7 +126,8 @@ def logout(em, client_state):
 
 
 def send_message(sender_username, receiver_username, message, client_state, connection):
-    if 'session_keys' not in client_state.state or receiver_username not in client_state.state['session_keys'] or client_state.state['session_keys'][receiver_username][1] >= time.time():
+    if 'session_keys' not in client_state.state or receiver_username not in client_state.state['session_keys'] or \
+            client_state.state['session_keys'][receiver_username][1] >= time.time():
         request = refresh_key(receiver_username, client_state)
         connection.send(request)
         time.sleep(0.3)
@@ -159,3 +161,30 @@ def refresh_key(peer, client_state):
     cipher_text = fernet.encrypt(data.encode())
     length = "{:03d}".format(len(cipher_text)).encode()
     return b'MK' + length + client_username.encode() + cipher_text
+
+
+def is_password_strong(password):
+    return True # TODO: DELETE THIS LINE FOR PRESENTATION TIME
+    # Check length
+    if len(password) < 8:
+        return False
+
+    # Check for at least one uppercase letter
+    if not any(char.isupper() for char in password):
+        return False
+
+    # Check for at least one lowercase letter
+    if not any(char.islower() for char in password):
+        return False
+
+    # Check for at least one digit
+    if not any(char.isdigit() for char in password):
+        return False
+
+    # Check for at least one special character
+    special_characters = "!@#$%^&*()-_=+[]{}|;:,.<>/?"
+    if not any(char in special_characters for char in password):
+        return False
+
+    # If all checks pass, the password is strong
+    return True

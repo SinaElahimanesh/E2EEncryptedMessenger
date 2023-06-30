@@ -11,7 +11,7 @@ import ast
 
 from client.client_state import SESSION_KEY_DURATION, ClientState
 from client.functions import create_account, create_group, save_master_key, generate_dh_shared_key, generate_dh_keys, \
-    refresh_key, login, show_online_users, logout, send_message
+    refresh_key, login, show_online_users, logout, send_message, is_password_strong
 from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
 from common.functions import load_public_key
 
@@ -102,6 +102,8 @@ def build_request(em, connection):
   """
     if em.lower().startswith("create account"):
         username, password, public_key = parse_create_account(em)
+        if not is_password_strong(password):
+            return 'WEAK_PASSWORD'
         return create_account(username, password, public_key)
     elif em.lower().startswith("create group"):
         group_name = parse_create_group(em)
@@ -231,11 +233,22 @@ def handle_user_inputs(connection):
             data = build_request(em, connection)
             if data == 'ERR':
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
+            elif data == 'WEAK_PASSWORD':
+                print(colored(__get_weak_password_message()), 'red')
             else:
                 connection.send(data)
         else:
             print(em)
     # connection.close()
+
+
+def __get_weak_password_message():
+    return 'Choose a password which has the following criteria:\n' + \
+           '1. It should have a minimum length of 8 characters.\n' + \
+           '2. It should contain at least one uppercase letter.\n' + \
+           '3. It should contain at least one lowercase letter.\n' + \
+           '4. It should contain at least one digit.\n' + \
+           '5. It should contain at least one special character from the set of special characters.'
 
 
 thread_1 = Thread(target=handle_user_inputs, args=(ClientMultiSocket,))
