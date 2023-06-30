@@ -225,13 +225,6 @@ def handle_incoming_requests(connection):
                 print(colored('USERNAME DOES NOT FOUND.', 'red'))
             elif plain == 'LOGOUT_SUCCESSFULLY':
                 print(colored('Logout successfully.', 'green'))
-        elif MOST_RECENT_ENCODED_MESSAGE == '':
-            cipher_text = cipher_text[2:]
-            master_key = client_state.state['master_key'].encode()
-            fernet = Fernet(master_key)
-            plain = fernet.decrypt(cipher_text).decode()
-            sender, _, m = plain.split('|')
-            print(colored(f'A Message From {sender}: {m}', 'cyan'))
         elif cipher_text[0] == 85 and cipher_text[1] == 69:  # if it starts with 'UE', it means the user already exists
             print(colored('User with this username already exists.', 'red'))
         else:
