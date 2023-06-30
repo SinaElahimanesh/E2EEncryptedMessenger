@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 import time
 import base64
 import hmac
+from termcolor import colored
 
 
 # from client_main import client_state
@@ -140,6 +141,8 @@ def send_message(sender_username, receiver_username, message, client_state, conn
         connection.send(request)
         time.sleep(0.3)
     session_key = base64.urlsafe_b64encode(client_state.state['session_keys'][receiver_username][0])
+    emoji_key = map_key_to_emoji(session_key)
+    print(colored('THIS SESSION IS ENCRYPTED:'+ emoji_key, 'green'))
     session_fernet = Fernet(session_key)
     cipher_message = session_fernet.encrypt(message.encode())
 
@@ -153,6 +156,47 @@ def send_message(sender_username, receiver_username, message, client_state, conn
     length = "{:03d}".format(len(cipher_text)).encode()
     return b'MK' + length + sender_username.encode() + cipher_text
 
+
+emoji_map = {
+    "A": "😀",
+    "B": "😎",
+    "C": "🐼",
+    "D": "🌈",
+    "E": "🍕",
+    "F": "🎉",
+    "G": "🌻",
+    "H": "🚀",
+    "I": "🌟",
+    "J": "🐬",
+    "K": "🍦",
+    "L": "🦄",
+    "M": "🐝",
+    "N": "🌺",
+    "O": "🌞",
+    "P": "🍓",
+    "Q": "🎈",
+    "R": "🔥",
+    "S": "🐢",
+    "T": "🚲",
+    "U": "⭐",
+    "V": "🍀",
+    "W": "🌊",
+    "X": "🌙",
+    "Y": "🌸",
+    "Z": "🍩"
+}
+
+def map_key_to_emoji(master_key):
+    emoji_key = ""
+    for char in master_key.decode():
+        if len(emoji_key) == 3:
+            break
+        if char.isalpha():
+            if char.upper() in emoji_map:
+                emoji_key += emoji_map[char.upper()]
+            else:
+                emoji_key += char
+    return emoji_key
 
 def refresh_key(peer, client_state):
     """

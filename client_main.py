@@ -13,7 +13,7 @@ import hashlib
 
 from client.client_state import SESSION_KEY_DURATION, ClientState
 from client.functions import create_account, create_group, save_master_key, save_master_key_login, generate_dh_shared_key, generate_dh_keys, \
-    refresh_key, login, show_online_users, logout, send_message, is_password_strong, verify_hmac
+    refresh_key, login, show_online_users, logout, send_message, is_password_strong, verify_hmac, map_key_to_emoji
 from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
 from common.functions import load_public_key
 
@@ -122,6 +122,8 @@ def handle_response(response, em):
         session_fernet = Fernet(session_key)
         m_decoded = session_fernet.decrypt(eval(m))
         if verify_hmac(session_key, m_decoded, eval(hmac_tag)): # + b'\xbcRd'
+            emoji_key = map_key_to_emoji(session_key)
+            print(colored('THIS SESSION IS ENCRYPTED:'+ emoji_key, 'green'))
             print(colored(f'A Message From {sender}: {m_decoded.decode("utf-8") }', 'cyan'))
             client_state.save_chats(user_password, sender, m_decoded, client_state.state['username'])
         else:
