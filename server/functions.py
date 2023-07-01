@@ -69,12 +69,24 @@ def handle_show_online_users(**kwargs):
     fernet = Fernet(master_key)
     online_users_lst = []
     for username_key in state.state['users']:
-        print('f', username_key)
         if username_key != 'status':
             if state.state['users'][username_key]['status']:
                 online_users_lst.append(username_key)
-                print('g', username_key, state.state['users'][username_key])
+                # print('g', username_key, state.state['users'][username_key])
     return b'SH' + fernet.encrypt(str(online_users_lst).encode())
+
+
+def handle_show_groups(req_parameters, **kwargs):
+    # print(req_parameters)
+    master_key = kwargs['master_key']
+    fernet = Fernet(master_key)
+    groups = []
+    for group_username in state.state['groups']:
+        if state.state['groups'][group_username]['admin'] == req_parameters or req_parameters in state.state['groups'][group_username]['members']:
+            groups.append(group_username)
+    # print('gpssssss', groups)
+    return b'SG' + fernet.encrypt(str(groups).encode())   
+
 
 
 def handle_logout(username, **kwargs):
@@ -88,12 +100,71 @@ def handle_logout(username, **kwargs):
 
 def handle_send_message(req_params, **kwargs):
     thread_pool = kwargs['thread_pool']
-    sender_username, receiver_username, _, _ = req_params.split('|')
+    print(req_params)
+    sender_username, receiver_username, _, _, _ = req_params.split('**')
     if receiver_username not in state.state['users']:
         return b'UNF', thread_pool.pool.get(sender_username)
     master_key = state.state['users'][receiver_username]['master_key'].encode()
     fernet = Fernet(master_key)
     return b'LO' + fernet.encrypt(req_params.encode()), thread_pool.pool.get(receiver_username)
+
+
+def handle_create_group(req_params, **kwargs):
+    group_username, admin_username = req_params.split('|')
+    master_key = kwargs['master_key']
+    fernet = Fernet(master_key)
+    if group_username in state.state['groups']:
+        return b'CG' + fernet.encrypt(b'GROUPNAME_IS_NOT_UNIQUE')
+    else:
+        group_key = Fernet.generate_key()
+        state.state['groups'][group_username] = {
+            # 'session_key': group_key.decode(),
+            'admin': admin_username,
+            'members': [admin_username]
+        }
+        state.save_data()
+        return b'CG' + fernet.encrypt(group_key)
+
+
+def handle_group_users(req_parameters, **kwargs):
+    group_username = req_parameters.split('|')[0]
+    # print(group_username)
+    master_key = kwargs['master_key']
+    fernet = Fernet(master_key)
+    if group_username not in state.state['groups']:
+        return b'GU' + fernet.encrypt(b'GROUP_DOES_NOT_EXIST')
+    else:
+        return b'GU' + fernet.encrypt(str(state.state['groups'][group_username]['members']).encode())
+
+
+def handle_add_to_group(req_params, **kwargs):
+    username, group_username, new_member = req_params.split('|')
+    if username != state.state['groups'][group_username]['admin']:
+        return b'PD', None
+    elif new_member not in state.state['users']:
+        return b'ANF', None
+    master_key = state.state['users'][new_member]['master_key'].encode()
+    fernet = Fernet(master_key)
+    thread_pool = kwargs['thread_pool']
+    state.state['groups'][group_username]['members'].append(new_member)
+    state.save_data()
+    return b'AG' + fernet.encrypt(req_params.encode()), thread_pool.pool.get(new_member)
+
+
+def handle_remove_from_group(req_params, **kwargs):
+    username, group_username, remove_member = req_params.split('|')
+    print(username, state.state['groups'][group_username]['admin'])
+    if username != state.state['groups'][group_username]['admin']:
+        return b'PD', None
+    elif remove_member not in state.state['users'] or remove_member not in state.state['groups'][group_username]['members']:
+        return b'RNF', None
+    master_key = state.state['users'][remove_member]['master_key'].encode()
+    fernet = Fernet(master_key)
+    thread_pool = kwargs['thread_pool']
+    state.state['groups'][group_username]['members'].remove(remove_member)
+    state.save_data()
+    return b'RG' + fernet.encrypt(req_params.encode()), thread_pool.pool.get(remove_member)
+
 
 
 def handle_refresh_key(req_params, **kwargs):

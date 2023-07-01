@@ -15,16 +15,18 @@ class ClientState:
             'username': '',  # TODO: Username must be set after login
             'nonce': '',  # Last Generated Nonce  to be checked in key generation process
             'private_dh_keys': {},  # Mapping from receivers to clients generated private keys
-            'session_keys': {}  # Mapping from receivers to a tuple: (shared session keys, timestamp)
+            'session_keys': {},  # Mapping from receivers to a tuple: (shared session keys, timestamp)
+            'group_session_keys': {}
         }
         self.chats = {
             'history': {}
         }
+        self.group_members = []
 
     def load_data(self):
         if not os.path.isfile(self.path):
             with open(self.path, 'w') as file:
-                json.dump({'master_key': [], 'username': '', 'nonce': '', 'private_dh_keys': {}, 'session_keys': {}}, file)
+                json.dump({'master_key': [], 'username': '', 'nonce': '', 'private_dh_keys': {}, 'session_keys': {}, 'group_session_keys': {}}, file)
         
         with open(self.path, 'r') as file:
             self.state = json.load(file)
@@ -36,8 +38,8 @@ class ClientState:
 
 
     def reset_chats(self, username):
-        if not os.path.isfile("client/" + username):
-            with open("client/" + username, 'wb') as file:
+        if not os.path.isfile("client/" + username + '_chats'):
+            with open("client/" + username + '_chats', 'wb') as file:
                 file.write(b'')
 
     def save_chats(self, password, sender, message, username):
@@ -46,15 +48,15 @@ class ClientState:
         loaded_json.append({"sender":sender, "message":message.decode("utf-8")})
         # print('loaded_json', loaded_json)
         cipher_text = fernet.encrypt(str(loaded_json).encode())
-        with open("client/" + username, 'wb') as file:
+        with open("client/" + username + '_chats', 'wb') as file:
             file.write(cipher_text)
 
     def load_chats(self, password, username):
-        if not os.path.isfile("client/" + username):
-            with open("client/" + username, 'w') as file:
+        if not os.path.isfile("client/" + username + '_chats'):
+            with open("client/" + username + '_chats', 'w') as file:
                 pass
         
-        with open("client/" + username, 'rb') as file:
+        with open("client/" + username + '_chats', 'rb') as file:
             content = file.read()
             # print(content, type(content), bytes(content), type(bytes(content)))#, eval(content), type(eval(content)))
 

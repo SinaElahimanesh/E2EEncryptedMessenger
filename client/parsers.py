@@ -43,3 +43,28 @@ def parse_send_message(em, sender_username):
     receiver = rest[3]
     return receiver, message
     # return sender_username, receiver_username, message
+
+
+def parse_send_group_message(em):
+    rest, req_type = em.split('###')
+    rest = rest.split()
+    message = rest[2]
+    group = rest[4]
+    return group, message
+
+
+def parse_add_to_group(em):
+    rest, req_type = em.split('###')
+    rest = rest.split()
+    new_member = rest[1]
+    group_username = rest[3]
+    return new_member, group_username
+
+
+def parse_remove_from_group(em):
+    rest, req_type = em.split('###')
+    rest = rest.split()
+    remove_username = rest[1]
+    group_username = rest[3]
+    return remove_username, group_username
+

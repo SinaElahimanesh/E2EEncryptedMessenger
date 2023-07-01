@@ -10,11 +10,12 @@ from cryptography.fernet import Fernet
 from termcolor import colored
 import ast
 import hashlib
+import re
 
 from client.client_state import SESSION_KEY_DURATION, ClientState
 from client.functions import create_account, create_group, save_master_key, save_master_key_login, generate_dh_shared_key, generate_dh_keys, \
-    refresh_key, login, show_online_users, logout, send_message, is_password_strong, verify_hmac, map_key_to_emoji
-from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message
+    refresh_key, login, show_online_users, logout, send_message, is_password_strong, verify_hmac, map_key_to_emoji, add_to_group, show_my_groups, send_group_message, remove_from_group
+from client.parsers import parse_create_account, parse_create_group, parse_login, parse_send_message, parse_add_to_group, parse_send_group_message, parse_remove_from_group
 from common.functions import load_public_key
 
 # If the received message from the server is corresponded to a sent message,
@@ -32,7 +33,7 @@ user_password = ''
 
 CLIENT_DATA_PATH = sys.argv[1]
 
-client_state = ClientState(CLIENT_DATA_PATH)
+client_state = None # ClientState(CLIENT_DATA_PATH)
 # client_state.load_data()
 
 # waiting to be connected to the server
@@ -46,12 +47,12 @@ except socket.error as e:
 res = ClientMultiSocket.recv(1024)
 
 # prompt
-USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Create Account: Create Account [USERNAME] [PASSWORD]\n" + "2. Login: Login [USERNAME] [PASSWORD]\n" + "3. Get List of Online Users: Show Online Users\n" + "4. Send Message: Send [MESSAGE] to [USERNAME]\n" + "5. Create Group: Create Group [GROUP_NAME]\n" + "6. Add User to Group: Add [USER] to [GROUP_NAME]]\n" + "7. Remove User from Group: Remove [USER] from [GROUP_NAME]\n" + "8. Logout From Account: Logout\n" + "9. Show Chat History: Show Chat History\n"
+USER_PROMPT = "\n\nHey there! You can write the following commands:\n" + "1. Create Account: Create Account [USERNAME] [PASSWORD]\n" + "2. Login: Login [USERNAME] [PASSWORD]\n" + "3. Get List of Online Users: Show Online Users\n" + "4. Send Message: Send \"[MESSAGE]\" to [USERNAME]\n" + "5. Create Group: Create Group [GROUP_NAME]\n" + "6. Add User to Group: Add [USER] to [GROUP_NAME]]\n" + "7. Remove User from Group: Remove [USER] from [GROUP_NAME]\n" + "8. Logout From Account: Logout\n" + "9. Show Chat History: Show Chat History\n" + "10. Show Groups: Show My Groups\n" + "11. Send Message in Group: Send Group \"[MESSAGE]\" In [GROUP_NAME]\n"
 
 
 # encode message
 def encode_message(inp):
-    if client_state.state['username'] == '' and (
+    if (client_state == None or client_state.state['username'] == '') and (
             not inp.lower().startswith("2") and not inp.lower().startswith("login")) and (
             not inp.lower().startswith("1") and not inp.lower().startswith("create account")):
         return "FAILURE", "Please login first."
@@ -59,8 +60,10 @@ def encode_message(inp):
         return "SUCCESS", inp + "###CREATE_ACCOUNT"
     elif inp.lower().startswith("2") or inp.lower().startswith("login"):
         return "SUCCESS", inp + "###LOGIN"
-    elif inp.lower().startswith("3") or inp.lower().startswith("show"):
+    elif inp.lower().startswith("3") or inp.lower().startswith("show online"):
         return "SUCCESS", inp + "###SHOW_ONLINE_USERS"
+    elif inp.lower().startswith("11") or inp.lower().startswith("send group"):
+        return "SUCCESS", inp + "###SEND_GROUP"
     elif inp.lower().startswith("4") or inp.lower().startswith("send"):
         return "SUCCESS", inp + "###SEND_MESSAGE"
     elif inp.lower().startswith("5") or inp.lower().startswith("create group"):
@@ -80,25 +83,33 @@ def encode_message(inp):
             message = m_json['message']
             print(colored(f'Message from {sender}: {message}', 'cyan'))
         return "CLIENTSIDE", inp + "###CHAT_HISTORY"
+    elif inp.lower().startswith("10") or inp.lower().startswith("show my"):
+        return "SUCCESS", inp + "###SHOW_GROUPS"
     return "FAILURE", "Please enter a valid input"
 
 
 def handle_response(response, em):
     global MOST_RECENT_ENCODED_MESSAGE
     global user_password
+    global CLIENT_DATA_PATH
+    global client_state
     MOST_RECENT_ENCODED_MESSAGE = ''
     if em != '':
         rest, req_type = em.split('###')
     else:
         rest, req_type = '', ''
-    if req_type.lower().startswith('create'):
+    if req_type.lower().startswith('create_account'):
         username, password = rest.split()[2:]
+        CLIENT_DATA_PATH = 'client/' + username + '.json'
+        client_state = ClientState(CLIENT_DATA_PATH)
         user_password = password
         save_master_key(response, username, password, client_state)
         print(colored('User registered successfully.', 'green'))
-    if req_type.lower().startswith('login'):
+    elif req_type.lower().startswith('login'):
         masterkey = response[2:]
         username, password = rest.split()[1:]
+        CLIENT_DATA_PATH = 'client/' + username + '.json'
+        client_state = ClientState(CLIENT_DATA_PATH)
         hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
         fernet = Fernet(base64.urlsafe_b64encode(hashlib.sha256(hashed_password.encode('utf-8')).hexdigest()[:32].encode('utf-8')))
         plain = fernet.decrypt(masterkey).decode()
@@ -106,18 +117,33 @@ def handle_response(response, em):
             print(colored('USERNAME OR PASSWORD IS INCORRECT.', 'red'))
         else:
             client_state.state['username'] = username
+            user_password = password
             # client_state.save_data()
             print(colored('Login successfully.', 'green'))
             # save_master_key(bytes(plain), username, password, client_state)
             save_master_key_login(plain, client_state)
             client_state.reset_chats(username)
+    elif req_type.lower().startswith('add'):
+        if response == b'PD':
+            print(colored('PERMISSION DENIED.', 'red'))
+        elif response == b'ANF':
+            print(colored('USER NOT FOUND TO BE ADDED.', 'red'))
+        else:
+            print(colored('Added successfully.', 'green'))
+    elif req_type.lower().startswith('remove'):
+        if response == b'PD':
+            print(colored('PERMISSION DENIED.', 'red'))
+        elif response == b'RNF':
+            print(colored('USER NOT FOUND TO BE REMOVED.', 'red'))
+        else:
+            print(colored('Removed successfully.', 'green'))
     else:
         cipher_text = response[2:]
         master_key = client_state.state['master_key'].encode()
         fernet = Fernet(master_key)
         plain = fernet.decrypt(cipher_text).decode()
 
-        sender, _, m, hmac_tag = plain.split('|')
+        sender, _, m, hmac_tag, _ = plain.split('**')
         session_key = base64.urlsafe_b64encode(client_state.state['session_keys'][sender][0])
         session_fernet = Fernet(session_key)
         m_decoded = session_fernet.decrypt(eval(m))
@@ -135,6 +161,7 @@ def build_request(em, connection):
     :param em: Request type, which starts with ###. e.g: ###GENERATE_KEY
     :return: The corresponding request data to send based on request type.
   """
+    global user_password
     if em.lower().startswith("create account"):
         username, password, public_key = parse_create_account(em)
         if not is_password_strong(password):
@@ -142,24 +169,49 @@ def build_request(em, connection):
         return create_account(username, password, public_key)
     elif em.lower().startswith("create group"):
         group_name = parse_create_group(em)
-        return create_group(group_name)
-    elif em.lower().startswith("create group"):
-        group_name = parse_create_group(em)
-        return create_group(group_name)
+        return create_group(group_name, client_state)
     elif em.lower().startswith("login"):
         username, password = parse_login(em)
         public_key = load_public_key(username)
         if public_key == 'ERR':
             return 'ERR'
         return login(username, password, public_key)
-    elif em.lower().startswith("show"):
+    elif em.lower().startswith("show online"):
         return show_online_users(em, client_state)
     elif em.lower().startswith("logout"):
         return logout(em, client_state)
+    elif em.lower().startswith("send group"):
+        username = client_state.state['username']
+        if "\"" in em:
+            long_message = re.findall('"([^"]*)"', em)[0]
+            em = em.replace(long_message, 'MESSAGE').replace("\"", '')
+            group, message = parse_send_group_message(em)
+            return send_group_message(username, group, long_message, client_state, connection, user_password)
+        else:
+            group, message = parse_send_group_message(em)
+            return send_group_message(username, group, message, client_state, connection, user_password)
     elif em.lower().startswith("send"):
         username = client_state.state['username']
-        receiver_username, message = parse_send_message(em, username)
-        return send_message(username, receiver_username, message, client_state, connection)
+        if "\"" in em:
+            long_message = re.findall('"([^"]*)"', em)[0]
+            em = em.replace(long_message, 'MESSAGE').replace("\"", '')
+            receiver_username, message = parse_send_message(em, username)
+            return send_message(username, receiver_username, long_message, client_state, connection, user_password)
+        else:
+            receiver_username, message = parse_send_message(em, username)
+            return send_message(username, receiver_username, message, client_state, connection, user_password)
+    elif em.lower().startswith("add"):
+        username = client_state.state['username']
+        new_member, group_username = parse_add_to_group(em)
+        return add_to_group(username, new_member, group_username, client_state, connection)
+    elif em.lower().startswith("show my"):
+        return show_my_groups(em, client_state)
+    elif em.lower().startswith("remove"):
+        username = client_state.state['username']
+        remove_username, group_username = parse_remove_from_group(em)
+        return remove_from_group(username, remove_username, group_username, client_state, connection)
+    
+
 
 
 # Start a new thread for incoming requests from server
@@ -169,6 +221,7 @@ def handle_incoming_requests(connection):
     This function waits for requests from the server for tasks such as key management.
     :param connection: Socket object
     """
+    global MOST_RECENT_ENCODED_MESSAGE
     while True:
         cipher_text = connection.recv(2048)
         if cipher_text == b'':
@@ -229,7 +282,25 @@ def handle_incoming_requests(connection):
             print(colored('List of online users:', 'green'))
             for u in ast.literal_eval(plain):
                 print(colored(u, 'green'))
-        elif cipher_text[0] == 79 and cipher_text[1] == 85:  # if it starts with 'OU', we have to handle set key process
+        elif cipher_text[0] == 71 and cipher_text[1] == 85:  # if it starts with 'GU'
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            client_state.group_members.extend(ast.literal_eval(plain))
+            print(colored('List of Group Members:', 'green'))
+            for u in ast.literal_eval(plain):
+                print(colored(u, 'green'))
+        elif cipher_text[0] == 83 and cipher_text[1] == 71:  # if it starts with 'SH', we have to handle set key process
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            print(colored('List of my groups:', 'green'))
+            for u in ast.literal_eval(plain):
+                print(colored(u, 'green'))
+        elif cipher_text[0] == 79 and cipher_text[1] == 85:  # if it starts with 'OU'
             cipher_text = cipher_text[2:]
             master_key = client_state.state['master_key'].encode()
             fernet = Fernet(master_key)
@@ -243,6 +314,37 @@ def handle_incoming_requests(connection):
                 print(colored('Logout successfully.', 'green'))
         elif cipher_text[0] == 85 and cipher_text[1] == 69:  # if it starts with 'UE', it means the user already exists
             print(colored('User with this username already exists.', 'red'))
+        elif cipher_text[0] == 67 and cipher_text[1] == 71: # if it starts with 'CG', we have to handle set key process
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+            rest, req_type = MOST_RECENT_ENCODED_MESSAGE.split('###')
+            MOST_RECENT_ENCODED_MESSAGE = ''
+            group_username = rest.split()[2]
+            # It must be in this format: (username, peer, nonce, peer_private_key)
+            plain = fernet.decrypt(cipher_text).decode()
+            if plain == 'GROUPNAME_IS_NOT_UNIQUE':
+                print(colored('GROUP NAME MUST BE UNIQUE.', 'red'))
+            else:
+                client_state.state['group_session_keys'][group_username] = plain
+                # print(group_username, client_state.state['group_session_keys'][group_username])
+                print(colored('Group created successfully.', 'green'))
+        elif cipher_text[0] == 65 and cipher_text[1] == 71: # if it starts with 'AG'
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+
+            plain = fernet.decrypt(cipher_text).decode()
+            _, group_username, _ = plain.split('|')
+            print(colored(f'You have been added to group {group_username} successfully.', 'green'))
+        elif cipher_text[0] == 82 and cipher_text[1] == 71: # if it starts with 'RG'
+            cipher_text = cipher_text[2:]
+            master_key = client_state.state['master_key'].encode()
+            fernet = Fernet(master_key)
+
+            plain = fernet.decrypt(cipher_text).decode()
+            _, group_username, _ = plain.split('|')
+            print(colored(f'You have been removed from group {group_username}.', 'green'))
         else:
             handle_response(cipher_text, MOST_RECENT_ENCODED_MESSAGE)
             # connection.send(refresh_key('B'))
@@ -264,7 +366,7 @@ def handle_user_inputs(connection):
                     print(colored('USERNAME DOES NOT FOUND.', 'red'))
                 elif data == 'WEAK_PASSWORD':
                     print(colored(__get_weak_password_message()), 'red')
-                else:
+                elif data is not None:
                     connection.send(data)
             else:
                 print(em)

@@ -9,10 +9,16 @@ import time
 import base64
 import hmac
 from termcolor import colored
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import rsa as asymmetricrsa
+from cryptography.hazmat.backends import default_backend
+
+
 
 
 # from client_main import client_state
-from common.functions import save_private_key, save_public_key, rsa_encrypt, load_private_key
+from common.functions import save_private_key, save_public_key, rsa_encrypt, load_private_key, load_public_key
 from cryptography.hazmat.primitives.asymmetric import dh
 
 PUBLIC_KEY_SERVER_PATH = 'server_pub.txt'
@@ -83,12 +89,12 @@ def create_account(username, password, public_key):
 
 
 def create_group(group_name, client_state):
-    data = 'CREATE_GROUP###' + '|'.join(group_name)
+    data = 'CREATE_GROUP###' + '|'.join([group_name, client_state.state['username']])
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
     cipher_text = fernet.encrypt(data.encode())
     length = "{:03d}".format(len(cipher_text)).encode()
-    return b'CG' + length + group_name.encode() + cipher_text
+    return b'MK' + length + client_state.state['username'].encode() + cipher_text
 
 
 # def login(username, password, client_state):
@@ -124,6 +130,16 @@ def show_online_users(em, client_state):
     return b'MK' + length + username.encode() + cipher_text
 
 
+def show_my_groups(em, client_state):
+    data = 'SHOW_GROUPS###' + client_state.state['username']
+    username = client_state.state['username']
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + username.encode() + cipher_text
+
+
 def logout(em, client_state):
     data = 'LOGOUT###' + client_state.state['username']
     username = client_state.state['username']
@@ -134,7 +150,93 @@ def logout(em, client_state):
     return b'MK' + length + username.encode() + cipher_text
 
 
-def send_message(sender_username, receiver_username, message, client_state, connection):
+
+def generate_signature(message, username, password):
+    private_key = load_private_key(username, password)
+    if isinstance(message, str):
+        message = message.encode('utf-8')
+    elif hasattr(message, "read") and hasattr(message.read, "__call__"):
+        message = message.read()
+
+    hash_value = hashlib.sha256(message).digest()
+    signature = rsa.sign(hash_value, private_key, 'SHA-256')
+    return signature
+
+def verify_signature(message, signature, username):
+    public_key = load_public_key(username)
+    if isinstance(message, str):
+        message = message.encode('utf-8')
+    elif hasattr(message, "read") and hasattr(message.read, "__call__"):
+        message = message.read()
+
+    hash_value = hashlib.sha256(message).digest()
+    try:
+        rsa.verify(hash_value, signature, public_key)
+        return True
+    except rsa.VerificationError:
+        return False
+
+
+
+# def generate_signature(message, username, password):
+#     private_key = load_private_key(username, password)
+#     signature = rsa.sign(message, private_key, 'SHA-256')
+#     return signature
+
+
+# def verify_signature(message, signature, username):
+#     public_key = load_public_key(username)
+#     try:
+#         rsa.verify(message, signature, public_key)
+#         return True
+#     except rsa.VerificationError:
+#         return False
+
+
+
+# def generate_signature(message, username, password):
+#     # Load the private key
+#     private_key = load_private_key(username, password)
+#     # private_key = asymmetricrsa.RSAPrivateKey.from_pem(private_key)
+
+
+#     # Sign the message
+#     signature = private_key.sign(
+#         message.encode(),
+#         padding.PSS(
+#             mgf=padding.MGF1(hashes.SHA256()),
+#             salt_length=padding.PSS.MAX_LENGTH
+#         ),
+#         hashes.SHA256()
+#     )
+#     print(signature, type(signature))
+#     return signature
+
+
+# def verify_signature(message, signature, username):
+#     # Load the public key
+#     public_key = load_public_key(username)
+#     # public_key = asymmetricrsa.RSAPublicKey.from_pem(public_key)
+
+
+#     try:
+#         # Verify the signature
+#         public_key.verify(
+#             signature,
+#             message.encode(),
+#             padding.PSS(
+#                 mgf=padding.MGF1(hashes.SHA256()),
+#                 salt_length=padding.PSS.MAX_LENGTH
+#             ),
+#             hashes.SHA256()
+#         )
+#         return True
+#     except:
+#         return False
+
+
+
+def send_message(sender_username, receiver_username, message, client_state, connection, password):
     if 'session_keys' not in client_state.state or receiver_username not in client_state.state['session_keys'] or \
             client_state.state['session_keys'][receiver_username][1] >= time.time():
         request = refresh_key(receiver_username, client_state)
@@ -149,12 +251,71 @@ def send_message(sender_username, receiver_username, message, client_state, conn
     # Create HMAC
     hmac_tag = create_hmac(session_key, message.encode())
     # print('this is ', str(cipher_message), str(hmac_tag))
-    data = 'SEND_MESSAGE###' + '|'.join([sender_username, receiver_username, str(cipher_message), str(hmac_tag)])
+    data = 'SEND_MESSAGE###' + '**'.join([sender_username, receiver_username, str(cipher_message), str(hmac_tag), str(generate_signature(message, sender_username, password))]) #generate_signature(message, sender_username, password)
     master_key = client_state.state['master_key'].encode()
     fernet = Fernet(master_key)
     cipher_text = fernet.encrypt(data.encode())
     length = "{:03d}".format(len(cipher_text)).encode()
     return b'MK' + length + sender_username.encode() + cipher_text
+
+
+def send_group_message(username, group, message, client_state, connection, password):
+    request = get_group_users(group, client_state)
+    connection.send(request)
+    time.sleep(0.2)
+    # print(client_state.group_members)
+    for user in client_state.group_members:
+        if user != username:
+            connection.send(send_message(username, user, str('(' + group + ' group) '+ message), client_state, connection, password))
+    print(colored('Sent successfully.', 'green'))
+    return
+
+
+
+def get_group_users(group_name, client_state):
+    data = 'GROUP_USERS###' + '|'.join([group_name])
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + client_state.state['username'].encode() + cipher_text
+
+
+
+def add_to_group(username, new_member, group_username, client_state, connection):
+    if 'session_keys' not in client_state.state or new_member not in client_state.state['session_keys'] or \
+        client_state.state['session_keys'][new_member][1] >= time.time():
+        request = refresh_key(new_member, client_state)
+        connection.send(request)
+        time.sleep(0.3)
+    # session_key = base64.urlsafe_b64encode(client_state.state['session_keys'][new_member][0])
+    # group_session_key = client_state.state['group_session_keys'][group_username].encode()
+    # session_fernet = Fernet(session_key)
+    # group_session_key_encrypted = session_fernet.encrypt(group_session_key)
+    # data = 'ADD###' + '|'.join([username, group_username, new_member, str(group_session_key_encrypted)])
+    data = 'ADD###' + '|'.join([username, group_username, new_member])
+
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + username.encode() + cipher_text
+
+
+def remove_from_group(username, remove_username, group_username, client_state, connection):
+    if 'session_keys' not in client_state.state or remove_username not in client_state.state['session_keys'] or \
+        client_state.state['session_keys'][remove_username][1] >= time.time():
+        request = refresh_key(remove_username, client_state)
+        connection.send(request)
+        time.sleep(0.3)
+
+    data = 'REMOVE###' + '|'.join([username, group_username, remove_username])
+
+    master_key = client_state.state['master_key'].encode()
+    fernet = Fernet(master_key)
+    cipher_text = fernet.encrypt(data.encode())
+    length = "{:03d}".format(len(cipher_text)).encode()
+    return b'MK' + length + username.encode() + cipher_text
 
 
 emoji_map = {

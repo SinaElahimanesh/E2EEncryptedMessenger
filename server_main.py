@@ -7,7 +7,7 @@ from _thread import *
 import rsa
 from cryptography.fernet import Fernet
 
-from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout, handle_send_message
+from server.functions import handle_create_account, load_private_key, handle_refresh_key, handle_backward_key, handle_login, handle_show_online_users, handle_logout, handle_send_message, handle_create_group, handle_add_to_group, handle_show_groups, handle_group_users, handle_remove_from_group
 from server.server_state import state
 from server.thread_pool import ThreadPool
 
@@ -43,12 +43,14 @@ def handle_client_request(req, connection, **kwargs):
         return handle_login(req_parameters, thread_pool, connection, **kwargs)
     elif req_type == "SHOW_ONLINE_USERS":
         return handle_show_online_users(**kwargs)
+    elif req_type == "SHOW_GROUPS":
+        return handle_show_groups(req_parameters, **kwargs)
     elif req_type == "SEND_MESSAGE":
         return handle_send_message(req_parameters, **kwargs)
     elif req_type == "CREATE_GROUP":
-        return req_type + "*" + req_parameters
-    elif req_type == "ADD_USER_TO_GROUP":
-        return req_type + "*" + req_parameters
+        return handle_create_group(req_parameters, **kwargs)
+    elif req_type == "ADD":
+        return handle_add_to_group(req_parameters, **kwargs)
     elif req_type == "BACKWARD_KEY":
         # Handle the returned key from the receiver of handshake process (B)
         username = req_parameters.split('|')[0]
@@ -62,11 +64,13 @@ def handle_client_request(req, connection, **kwargs):
         handle_refresh_key(req_parameters, **kwargs)
         return None
     elif req_type == "REMOVE_USER_FROM_GROUP":
-        return req_type + "*" + req_parameters
+        return handle_remove_from_group(req_parameters, **kwargs)
     elif req_type == "LOGOUT":
         return handle_logout(req_parameters, **kwargs)
+    elif req_type == "GROUP_USERS":
+        return handle_group_users(req_parameters, **kwargs)
     else:
-        return "ERROR: Please enter a valid request type."
+        return b'ERROR: Please enter a valid request type.'
 
 
 # handle client
@@ -75,7 +79,8 @@ def multi_threaded_client(connection):
     private_key = load_private_key()
     while True:
         data = connection.recv(2048)
-        print(data)
+        if data == b'':
+            continue
         if data[0] == 80 and data[1] == 85:  # If it starts with PU, it means it has been encrypted with server_pub_key
             client_pub_key = data[-251:]
             data = data[2:-251]
@@ -87,7 +92,9 @@ def multi_threaded_client(connection):
             length = int(data[2:5])  # Length of cipher
             cipher_text = data[-length:]
             username = data[5:-length].decode()
+            # print(username)
             if username not in state.state['users']:
+                # print('nffff')
                 connection.sendall(b'UNF')
             else:
                 master_key = state.state['users'][username]['master_key'].encode()
@@ -101,6 +108,21 @@ def multi_threaded_client(connection):
                     response, receiver_connection = handle_send_message(req_parameters, thread_pool=thread_pool)
                     if response is not None:
                         receiver_connection.sendall(response)
+                elif req_type == "ADD":
+                    response, receiver_connection = handle_add_to_group(req_parameters, thread_pool=thread_pool)
+                    if response != b'PD' and response != b'ANF':
+                        receiver_connection.sendall(response)
+                        connection.sendall(b'OK')
+                    else:
+                        connection.sendall(response)
+                elif req_type == "REMOVE":
+                    response, receiver_connection = handle_remove_from_group(req_parameters, thread_pool=thread_pool)
+                    print(response, receiver_connection)
+                    if response != b'PD' and response != b'RNF':
+                        receiver_connection.sendall(response)
+                        connection.sendall(b'OK')
+                    else:
+                        connection.sendall(response)
                 else:
                     response = handle_client_request(plain, connection, master_key=master_key)
                     if response is not None:
