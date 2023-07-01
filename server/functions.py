@@ -176,6 +176,8 @@ def handle_refresh_key(req_params, **kwargs):
     :return: B's parameters to be sent to A
     """
     username, peer, nonce, public_key, parameters = req_params.split('|')
+    if peer not in state.state['users']:
+        return
     peer_master_key = state.state['users'][peer]['master_key'].encode()
     fernet = Fernet(peer_master_key)
     enc_request = b'NK' + fernet.encrypt(req_params.encode())

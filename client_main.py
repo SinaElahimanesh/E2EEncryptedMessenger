@@ -31,7 +31,7 @@ port = 2011
 
 user_password = ''
 
-CLIENT_DATA_PATH = sys.argv[1]
+CLIENT_DATA_PATH = ''
 
 client_state = None # ClientState(CLIENT_DATA_PATH)
 # client_state.load_data()

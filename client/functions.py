@@ -380,7 +380,7 @@ def refresh_key(peer, client_state):
 
 
 def is_password_strong(password):
-    return True # TODO: DELETE THIS LINE FOR PRESENTATION TIME
+    # return True # TODO: DELETE THIS LINE FOR PRESENTATION TIME
     # Check length
     if len(password) < 8:
         return False
